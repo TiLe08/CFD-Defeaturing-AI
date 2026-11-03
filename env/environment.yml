@@ -1,0 +1,13 @@
+# conda env create -f env/environment.yml && conda activate fad
+name: fad
+channels: [conda-forge]
+dependencies:
+  - python=3.11
+  - numpy>=2.0
+  - scipy>=1.13
+  - pandas>=2.2
+  - pyarrow>=16
+  - shapely>=2.0
+  - trimesh>=4.4
+  - mapbox_earcut>=1.0
+  - pytest>=8
