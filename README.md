@@ -2,6 +2,8 @@
 
 Research project for uni. Goal is to build an AI to do flow-aware defeaturing on STL files to make CFD simulations better.
 
+**Unter Windows ohne Vorkenntnisse:** siehe [ANLEITUNG_WINDOWS.md](ANLEITUNG_WINDOWS.md). Drei Doppelklick-Skripte im Ordner `windows/` erledigen Installation und den AP2-Lauf.
+
 ## Stand AP2 (Entwurf)
 
 Code für das Research Project „Flow-Aware Defeaturing“ (TH Ulm, WiSe 2026/27). Grundlage sind der Plan in `HANDOFF_Flow-Aware-Defeaturing.md` und das Konzept „Technische Umsetzung“. Dieser Stand deckt AP2 ab, also den Machbarkeitsnachweis für Gate 1 an der Familie F1 (Kanal mit Wandfeature, laminar).
