@@ -23,7 +23,10 @@ def _clean(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
     mesh.update_faces(mesh.unique_faces())
     mesh.remove_unreferenced_vertices()
     if not mesh.is_watertight:
-        trimesh.repair.fill_holes(mesh)
+        try:
+            trimesh.repair.fill_holes(mesh)
+        except Exception:  # repair is best effort (needs networkx)
+            pass
     if not mesh.is_watertight:
         raise MeshError(
             "Die STL ist nicht geschlossen (nicht wasserdicht). Bitte eine "
