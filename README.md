@@ -2,7 +2,9 @@
 
 Research project for uni. Goal is to build an AI to do flow-aware defeaturing on STL files to make CFD simulations better.
 
-**Unter Windows ohne Vorkenntnisse:** siehe [ANLEITUNG_WINDOWS.md](ANLEITUNG_WINDOWS.md). Drei Doppelklick-Skripte im Ordner `windows/` erledigen Installation und den AP2-Lauf.
+**Unter Windows ohne Vorkenntnisse:** siehe [ANLEITUNG_WINDOWS.md](ANLEITUNG_WINDOWS.md). Doppelklick-Skripte im Ordner `windows/` erledigen Installation, den AP2-Lauf und starten das Defeaturing-Tool.
+
+**Defeaturing-Tool (Stufe 1):** STL laden, erkannte Features im Browser prüfen und per Klick behalten oder entfernen, bereinigte STL plus Protokoll exportieren. Start mit `python -m app.server --open` oder `windows/4_Defeaturing_Tool.bat`. Details und Grenzen: [docs/defeaturing_tool.md](docs/defeaturing_tool.md).
 
 ## Stand AP2 (Entwurf)
 
@@ -20,6 +22,9 @@ Die Implementierung entstand unter Verwendung des KI-Assistenten Claude (Anthrop
 | Deskriptoren D_geo und D_flow | `descriptors/` | pytest, inkl. Skaleninvarianz bei gleichem Re |
 | Datensatz (eine Zeile je Feature, Ausschlüsse mit Grund) | `pipeline/build_dataset.py` | auf den AP2-Ergebnissen |
 | Gate-1-Auswertung (Nullversuche, GCI, Laufzeit) | `pipeline/ap2_report.py` | auf den AP2-Ergebnissen |
+| STL: Hülle, Feature-Erkennung, Defeaturing (AP5, vorgezogen) | `stl/` | pytest an Testplatte mit 5 bekannten Features |
+| Größenregel B0 | `models/baselines.py` | pytest |
+| Defeaturing-Tool mit Browser-Oberfläche | `app/` | pytest (API) und automatischer Browsertest |
 
 Die Ergebnisse von Claudes Testlauf liegen in `docs/ap2_testlauf_claude_v1912.md` als Vergleichswerte.
 
