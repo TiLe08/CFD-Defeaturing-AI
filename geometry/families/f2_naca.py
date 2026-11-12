@@ -123,6 +123,22 @@ def slot_box(p: F2Params, side: str = "upper") -> Polygon:
     return affinity.rotate(poly, -p.alpha_deg, origin=(0.25 * p.c, 0.0))
 
 
+def feature_zone(p: F2Params, side: str = "upper", margin: float = 0.0) -> Polygon:
+    """Largest feature footprint at the slot plus a margin (rotated).
+
+    Every feature of the design lies inside it (w <= slot_w_max,
+    h <= slot_h_max, centred at slot_s).
+    """
+    upper, lower = naca4(p.m, p.p, p.t, p.c, p.n_side)
+    pts, sign = (upper, 1.0) if side == "upper" else (lower, -1.0)
+    pt, tan, nrm = surface_frame(pts, p.slot_s * p.c, sign)
+    half = 0.5 * p.slot_w_max * p.c + margin
+    v = 1.5 * p.slot_h_max * p.c + margin
+    poly = Polygon([pt + a * tan + b * nrm for a, b in
+                    ((-half, -v), (half, -v), (half, v), (-half, v))])
+    return affinity.rotate(poly, -p.alpha_deg, origin=(0.25 * p.c, 0.0))
+
+
 def body_frame(xy: np.ndarray, p: F2Params) -> np.ndarray:
     """Undo the angle-of-attack rotation (for wall data in chordwise x)."""
     a = np.deg2rad(p.alpha_deg)

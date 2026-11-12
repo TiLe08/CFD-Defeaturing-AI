@@ -58,9 +58,11 @@ def mesh(case: Path, spec: dict) -> dict:
     feats = [Feature.from_dict(f) for f in spec["features"]]
     solid = f2_naca.profile_polygon(p, feats)
     slot = f2_naca.slot_box(p, spec["mesh"].get("slot_side", "upper"))
+    sizes = mesh_sizes(spec)
+    side = spec["mesh"].get("slot_side", "upper")
+    zone = f2_naca.feature_zone(p, side, margin=3 * sizes["slot"])
     stats = mesh_profile(case / MSH, f2_naca.domain_box(p), solid, slot,
-                         mesh_sizes(spec), dz=spec["mesh"]["dz"] * p.c,
-                         clean=f2_naca.profile_polygon(p, []))
+                         sizes, dz=spec["mesh"]["dz"] * p.c, footprint=zone)
     (case / "mesh.json").write_text(json.dumps({k: float(v) for k, v in stats.items()}))
     return stats
 

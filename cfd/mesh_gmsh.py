@@ -26,7 +26,7 @@ def first_cell_height(U: float, nu: float, L: float, y_plus: float = 1.0) -> flo
 
 
 def mesh_profile(out_msh: Path, domain: Polygon, solid: Polygon, slot: Polygon,
-                 sizes: dict, dz: float, clean: Polygon | None = None) -> dict:
+                 sizes: dict, dz: float, footprint: Polygon | None = None) -> dict:
     """Mesh domain minus solid; write gmsh 2.2 ASCII; return mesh stats.
 
     sizes: far (domain edges), wall (tangential size on the profile),
@@ -97,27 +97,21 @@ def mesh_profile(out_msh: Path, domain: Polygon, solid: Polygon, slot: Polygon,
         # feature). The outer layers then end at a height where the cells are
         # already coarse, instead of at the wall (skewed cells otherwise).
         from shapely.geometry import LineString, Point
-        from shapely.ops import unary_union
 
         slot_zone = slot.buffer(0.0)
         in_slot = [slot_zone.contains(Point(*(0.5 * (ring[i] + ring[(i + 1) % len(ring)]))))
                    for i in range(len(ring))]
-        # Lines created by a feature (not on the clean profile) get no layer:
-        # layers meeting in the concave corners of a groove make gmsh fail.
-        # The layer also stops a few cells before a feature: ending it at the
-        # lip of a groove folds the last column of cells.
-        mids = [Point(*(0.5 * (ring[i] + ring[(i + 1) % len(ring)]))) for i in range(len(ring))]
-        on_clean = [True] * len(ring)
-        if clean is not None:
-            feat = [LineString([ring[i], ring[(i + 1) % len(ring)]])
-                    for i, mp in enumerate(mids) if clean.exterior.distance(mp) > 1e-9]
-            if feat:
-                near = unary_union(feat).buffer(3 * sizes["slot"])
-                on_clean = [clean.exterior.distance(mp) < 1e-9
-                            and not near.intersects(LineString([ring[i], ring[(i + 1) % len(ring)]]))
-                            for i, mp in enumerate(mids)]
+        # No layer inside the feature zone (largest feature footprint plus a
+        # few cells): layers meeting in the concave corners of a groove make
+        # gmsh fail, and a layer ending at a groove lip folds its last cells.
+        # The zone depends only on the base configuration, so runs with and
+        # without a feature get the same wall treatment around the slot.
+        free = [True] * len(ring)
+        if footprint is not None:
+            free = [not footprint.intersects(LineString([ring[i], ring[(i + 1) % len(ring)]]))
+                    for i in range(len(ring))]
         groups_bl = [([ln for ln, s in zip(wall_lines, in_slot) if not s], sizes["bl_thickness"]),
-                     ([ln for ln, s, o in zip(wall_lines, in_slot, on_clean) if s and o],
+                     ([ln for ln, s, o in zip(wall_lines, in_slot, free) if s and o],
                       sizes["slot_bl_thickness"])]
         for lines, thick in groups_bl:
             if not lines or thick <= 0:
