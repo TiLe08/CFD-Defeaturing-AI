@@ -18,6 +18,7 @@ class Feature:
     s: float  # centre position along the wall [m]
     w: float  # width along the wall [m]
     h: float  # depth (groove) or height (rib) [m]
+    wall: str = ""  # wall carrying the feature where a family has several (F2: upper/lower)
 
     def __post_init__(self):
         if self.kind not in FEATURE_TYPES:
@@ -36,4 +37,4 @@ class Feature:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Feature":
-        return cls(kind=d["kind"], s=d["s"], w=d["w"], h=d["h"])
+        return cls(kind=d["kind"], s=d["s"], w=d["w"], h=d["h"], wall=d.get("wall", ""))

@@ -1,0 +1,18 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       volScalarField;
+    location    "0";
+    object      omega;
+}
+dimensions      [0 0 -1 0 0 0 0];
+internalField   uniform {{OMEGA_INF}};
+boundaryField
+{
+    inlet       { type fixedValue; value uniform {{OMEGA_INF}}; }
+    farfield    { type slip; }
+    outlet      { type inletOutlet; inletValue uniform {{OMEGA_INF}}; value uniform {{OMEGA_INF}}; }
+    profile     { type omegaWallFunction; value uniform {{OMEGA_INF}}; }
+    "(front|back)" { type empty; }
+}
