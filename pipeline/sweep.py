@@ -176,6 +176,9 @@ def design_f2_trial() -> list[dict]:
             f = {"kind": kind, "s": p.slot_s * c, "w": 0.05 * c, "h": h * c, "wall": "upper"}
             specs.append(_spec_f2(f"{base}_with_{kind}_h{h:g}", base, "with", params, [f],
                                   flow, F2_MESH_FINE))
+    # null tests: window meshed anew (outer mesh shared), and outer mesh changed
+    specs.append(_spec_f2(f"{base}_null_remesh", base, "null_remesh", params, [], flow,
+                          F2_MESH_FINE))
     specs.append(_spec_f2(f"{base}_null_far", base, "null_far", params, [], flow,
                           dict(F2_MESH_FINE, far=0.4)))
     specs.append(_spec_f2(f"{base}_base_coarse", base, "base_coarse", params, [], flow,
