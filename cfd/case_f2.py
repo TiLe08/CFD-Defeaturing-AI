@@ -19,6 +19,7 @@ from geometry.families import f2_naca
 
 STEPS = ("gmsh", "gmshToFoam", "fix2D", "checkMesh", "simpleFoam", "postprocess")
 MSH = "profile.msh"
+OUTER_CACHE = "_outer_meshes"  # next to the case folders, shared by a base
 
 
 def params(spec: dict) -> f2_naca.F2Params:
@@ -57,13 +58,14 @@ def mesh(case: Path, spec: dict) -> dict:
     p = params(spec)
     feats = [Feature.from_dict(f) for f in spec["features"]]
     solid = f2_naca.profile_polygon(p, feats)
-    slot = f2_naca.slot_box(p, spec["mesh"].get("slot_side", "upper"))
-    sizes = mesh_sizes(spec)
     side = spec["mesh"].get("slot_side", "upper")
+    sizes = mesh_sizes(spec)
+    window = f2_naca.slot_box(p, side)
     zone = f2_naca.feature_zone(p, side, margin=3 * sizes["slot"])
-    stats = mesh_profile(case / MSH, f2_naca.domain_box(p), solid, slot,
-                         sizes, dz=spec["mesh"]["dz"] * p.c, footprint=zone)
-    (case / "mesh.json").write_text(json.dumps({k: float(v) for k, v in stats.items()}))
+    stats = mesh_profile(case / MSH, f2_naca.domain_box(p), solid,
+                         f2_naca.profile_polygon(p, []), window, zone, sizes,
+                         dz=spec["mesh"]["dz"] * p.c, cache_dir=case.parent / OUTER_CACHE)
+    (case / "mesh.json").write_text(json.dumps(stats))
     return stats
 
 

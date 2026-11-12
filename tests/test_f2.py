@@ -109,9 +109,15 @@ def _gmsh_available():
 
 
 @pytest.mark.skipif(not _gmsh_available(), reason="gmsh not installed")
-def test_coarse_mesh_with_groove(tmp_path):
-    spec = next(s for s in sweep.design_f2_trial() if s["role"] == "base_coarse")
-    spec = dict(spec, features=[_feat("groove", h=0.005).to_dict()])
-    stats = case_f2.mesh(tmp_path, spec)
-    assert 5_000 < stats["cells"] < 60_000
-    assert (tmp_path / case_f2.MSH).stat().st_size > 0
+def test_coarse_meshes_share_the_outer_mesh(tmp_path):
+    base = next(s for s in sweep.design_f2_trial() if s["role"] == "base_coarse")
+    groove = dict(base, features=[_feat("groove", h=0.005).to_dict()])
+    stats = []
+    for name, spec in (("without", base), ("groove", groove)):
+        (tmp_path / name).mkdir()
+        stats.append(case_f2.mesh(tmp_path / name, spec))
+        assert (tmp_path / name / case_f2.MSH).stat().st_size > 0
+    assert 5_000 < stats[0]["cells"] < 60_000
+    assert stats[0]["outer_key"] == stats[1]["outer_key"]
+    assert stats[0]["cells_outer"] == stats[1]["cells_outer"]
+    assert len(list((tmp_path / case_f2.OUTER_CACHE).glob("*.npz"))) == 1
