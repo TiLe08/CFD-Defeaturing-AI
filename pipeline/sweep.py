@@ -84,40 +84,109 @@ def design_ap2() -> list[dict]:
     return specs
 
 
-def design_f1_lhs(n_base: int, k: int, seed: int) -> list[dict]:
-    """Draft for AP4: Latin hypercube over F1 base configurations.
+# F1 data set (AP3/AP4). Ranges fixed after Gate 1 (05.11.2026):
+# - h/H >= 0.05: smaller features span fewer than two cells of the
+#   refinement box (level 2) and are not resolved by the Gate-1 mesh.
+# - Re 20-500: steady laminar channel flow.
+F1_RANGES = {"Re": (20.0, 500.0), "h_over_H": (0.05, 0.5), "w_over_H": (0.1, 2.0)}
+F1_SEED = 2026
 
-    Per base configuration: one run without feature, k runs with one feature,
-    one coarse base run. Ranges are placeholders until Gate 1.
+
+def design_f1_lhs(n_base: int = 30, k: int = 8, seed: int = F1_SEED) -> list[dict]:
+    """F1 data set: Latin hypercube over base configurations and features.
+
+    Per base configuration: one run without feature (label reference), one
+    coarse base run (descriptor source) and k runs with one feature each,
+    half grooves and half ribs. h and Re are sampled log-uniformly. The
+    lowest- and highest-Re bases additionally get the three-level GCI study.
     """
     from scipy.stats import qmc
 
     p = F1Params()
     params = {k_: getattr(p, k_) for k_ in ("H", "L_up", "L_down", "slot_w_max", "slot_h_max")}
     H, nu = p.H, 1e-6
+    (re_lo, re_hi), (h_lo, h_hi), (w_lo, w_hi) = (F1_RANGES[n] for n in ("Re", "h_over_H", "w_over_H"))
     rng = np.random.default_rng(seed)
-    base_pts = qmc.LatinHypercube(d=1, seed=seed).random(n_base)
-    re_vals = 10 ** qmc.scale(base_pts, [np.log10(20)], [np.log10(500)])[:, 0]
+    base_pts = qmc.LatinHypercube(d=1, seed=seed).random(n_base)[:, 0]
+    re_vals = 10 ** (np.log10(re_lo) + base_pts * (np.log10(re_hi) - np.log10(re_lo)))
+    gci_bases = {int(np.argmin(re_vals)), int(np.argmax(re_vals))}
     specs = []
     for b, Re in enumerate(re_vals):
         base = f"f1_b{b:03d}"
-        flow = {"U": Re * nu / H, "nu": nu, "Re": float(Re)}
+        flow = {"U": float(Re * nu / H), "nu": nu, "Re": float(Re)}
         specs.append(_spec(f"{base}_without", base, "without", params, [], flow, F1_MESH_FINE))
         specs.append(_spec(f"{base}_base_coarse", base, "base_coarse", params, [], flow,
                            F1_MESH_COARSE))
+        kinds = rng.permutation(["groove", "rib"] * (k // 2) + ["groove"] * (k % 2))
         feat_pts = qmc.LatinHypercube(d=3, seed=seed + 1000 + b).random(k)
+        feats = []
         for j, (u_h, u_w, u_s) in enumerate(feat_pts):
-            h = 10 ** (np.log10(0.02) + u_h * (np.log10(p.slot_h_max) - np.log10(0.02)))
-            w = 0.1 + u_w * (p.slot_w_max - 0.1)
-            kind = "groove" if rng.random() < 0.5 else "rib"
+            h = 10 ** (np.log10(h_lo) + u_h * (np.log10(h_hi) - np.log10(h_lo)))
+            w = w_lo + u_w * (w_hi - w_lo)
             s = p.s_slot + (u_s - 0.5) * (p.slot_w_max - w) * H
-            f = {"kind": kind, "s": float(s), "w": float(w * H), "h": float(h * H)}
+            f = {"kind": str(kinds[j]), "s": float(s), "w": float(w * H), "h": float(h * H)}
+            feats.append(f)
             specs.append(_spec(f"{base}_with_f{j}", base, "with", params, [f], flow,
                                F1_MESH_FINE))
+        if b in gci_bases:
+            for n in (7, 14):
+                m = dict(F1_MESH_FINE, n_per_H=n)
+                specs.append(_spec(f"{base}_gci_without_n{n}", base, "gci_without", params,
+                                   [], flow, m))
+                specs.append(_spec(f"{base}_gci_with_n{n}", base, "gci_with", params,
+                                   [feats[0]], flow, m))
     return specs
 
 
-DESIGNS = {"ap2": design_ap2}
+# F2 (NACA profile, turbulent, k-omega SST, wall-resolved y+ ~ 1). Sizes are
+# fractions of the chord. Settings are a first proposal and are fixed in the
+# F2 feasibility check (design "f2_trial"), like Gate 1 for F1.
+F2_MESH_FINE = {"far": 0.5, "wall": 0.004, "slot": 0.0005, "wake": 0.01,
+                "bl_thickness": 0.01, "slot_bl_thickness": 0.0002, "near_dist": 1.0, "ratio": 1.2, "y_plus": 1.0,
+                "dz": 0.001, "slot_side": "upper"}
+F2_MESH_COARSE = dict(F2_MESH_FINE, wall=0.008, slot=0.002, wake=0.02, ratio=1.3)
+F2_SOLVER = {"max_iter": 4000, "res_p": 1e-5, "res_u": 1e-6, "n_avg": 200,
+             "q_rel_tol": 1e-4}
+
+
+def _spec_f2(case_id, base_id, role, params, features, flow, mesh):
+    return {"case_id": case_id, "base_id": base_id, "role": role,
+            "family": "F2", "template": "f2_naca",
+            "params": params, "features": features, "flow": flow,
+            "mesh": deepcopy(mesh), "solver": dict(F2_SOLVER)}
+
+
+def design_f2_trial() -> list[dict]:
+    """F2 feasibility check on one base configuration (NACA 2412, 4 deg, Re 3e5).
+
+    Same roles as AP2: reference, features, null test (slot mesh with a
+    finer far field), coarse base run.
+    """
+    from geometry.families.f2_naca import F2Params
+
+    p = F2Params()
+    params = {k: getattr(p, k) for k in ("c", "m", "p", "t", "alpha_deg", "x_up", "x_down",
+                                          "y_half", "slot_s", "slot_w_max", "slot_h_max", "n_side")}
+    c, nu, Re = p.c, 1.5e-5, 3e5
+    flow = {"U": Re * nu / c, "nu": nu, "Re": Re, "turb_intensity": 0.005, "nut_ratio": 1.0}
+    base = "f2_trial_b000"
+    specs = [_spec_f2(f"{base}_without", base, "without", params, [], flow, F2_MESH_FINE)]
+    for kind in ("groove", "rib"):
+        for h in (0.002, 0.005, 0.01):
+            f = {"kind": kind, "s": p.slot_s * c, "w": 0.05 * c, "h": h * c, "wall": "upper"}
+            specs.append(_spec_f2(f"{base}_with_{kind}_h{h:g}", base, "with", params, [f],
+                                  flow, F2_MESH_FINE))
+    # null tests: window meshed anew (outer mesh shared), and outer mesh changed
+    specs.append(_spec_f2(f"{base}_null_remesh", base, "null_remesh", params, [], flow,
+                          F2_MESH_FINE))
+    specs.append(_spec_f2(f"{base}_null_far", base, "null_far", params, [], flow,
+                          dict(F2_MESH_FINE, far=0.4)))
+    specs.append(_spec_f2(f"{base}_base_coarse", base, "base_coarse", params, [], flow,
+                          F2_MESH_COARSE))
+    return specs
+
+
+DESIGNS = {"ap2": design_ap2, "f1": design_f1_lhs, "f2_trial": design_f2_trial}
 
 
 def plan(specs: list[dict], out: Path) -> pd.DataFrame:

@@ -65,4 +65,18 @@ def test_lhs_design_is_reproducible():
     a = sweep.design_f1_lhs(4, 3, seed=1)
     b = sweep.design_f1_lhs(4, 3, seed=1)
     assert a == b
-    assert len(a) == 4 * (2 + 3)
+    # per base: without, base_coarse, 3 features; plus GCI (4 runs) on 2 bases
+    assert len(a) == 4 * (2 + 3) + 2 * 4
+
+
+def test_f1_design_respects_ranges_and_balance():
+    specs = sweep.design_f1_lhs()
+    feats = [s for s in specs if s["role"] == "with"]
+    assert len(feats) == 30 * 8
+    H = specs[0]["params"]["H"]
+    lo, hi = sweep.F1_RANGES["h_over_H"]
+    assert all(lo <= s["features"][0]["h"] / H <= hi for s in feats)
+    kinds = [s["features"][0]["kind"] for s in feats]
+    assert kinds.count("rib") == kinds.count("groove")
+    re = [s["flow"]["Re"] for s in specs if s["role"] == "without"]
+    assert min(re) >= 20 and max(re) <= 500
