@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Defeaturing-Tool</title>
+<link rel="stylesheet" href="/static/style.css">
+<script type="importmap">
+{ "imports": { "three": "/static/vendor/three.module.min.js" } }
+</script>
+</head>
+<body>
+<aside id="side">
+  <header>
+    <h1>Defeaturing-Tool</h1>
+    <p class="sub">STL laden, Features prüfen, bereinigte STL exportieren. Alles läuft auf diesem Rechner.</p>
+  </header>
+
+  <section id="step-load" class="step">
+    <h2><span class="num">1</span> STL laden</h2>
+    <label id="drop" class="drop" for="file">
+      <strong>STL hierher ziehen</strong><span>oder klicken zum Auswählen</span>
+      <input id="file" type="file" accept=".stl">
+    </label>
+    <div class="row">
+      <label for="unit">Einheit der Datei</label>
+      <select id="unit"><option value="mm" selected>mm</option><option value="m">m</option><option value="cm">cm</option><option value="in">Zoll</option></select>
+    </div>
+    <button id="demo" class="link">Oder: Beispielplatte laden (5 bekannte Features)</button>
+    <p id="loadinfo" class="info"></p>
+  </section>
+
+  <section id="step-detect" class="step disabled">
+    <h2><span class="num">2</span> Features finden</h2>
+    <div class="row">
+      <label for="rmax" title="Vertiefungen, die schmaler als etwa 2 × r sind, gelten als Feature">Radius Vertiefungen r<sub>max</sub></label>
+      <span class="inp"><input id="rmax" type="number" step="any" min="0"><em class="u"></em></span>
+    </div>
+    <div class="row">
+      <label for="rcvx" title="Vorsprünge, die dünner als etwa 2 × r sind, gelten als Feature. Muss kleiner sein als die halbe dünnste Wand.">Radius Vorsprünge r<sub>vor</sub></label>
+      <span class="inp"><input id="rcvx" type="number" step="any" min="0"><em class="u"></em></span>
+    </div>
+    <div class="row">
+      <label for="quality" title="Feineres Voxelgitter erkennt kleinere Features, rechnet aber länger">Genauigkeit</label>
+      <select id="quality">
+        <option value="8000000" selected>Standard (schnell)</option>
+        <option value="25000000">Fein (ca. 3× langsamer)</option>
+        <option value="50000000">Sehr fein (viel RAM)</option>
+      </select>
+    </div>
+    <details>
+      <summary>Was bedeuten die Radien?</summary>
+      <p>Das Tool rollt gedanklich eine Kugel über das Bauteil. Alles, wo die Kugel mit Radius r<sub>max</sub> nicht hineinpasst (Bohrungen, Nuten, Gravuren), ist eine Vertiefung. Alles, was eine Kugel mit r<sub>vor</sub> nicht ausfüllen kann (Schraubenköpfe, Rippen, Schrift), ist ein Vorsprung. r<sub>vor</sub> muss kleiner sein als die halbe Dicke der dünnsten Wand, sonst wird die Wand selbst zum Feature. Wird ein kleines Feature nicht gefunden, hilft die Genauigkeit „Fein“: das Feature muss etwa zwei Voxel tief sein.</p>
+    </details>
+    <button id="analyse" class="primary">Features suchen</button>
+    <p id="detectinfo" class="info"></p>
+  </section>
+
+  <section id="step-review" class="step disabled">
+    <h2><span class="num">3</span> Prüfen und entscheiden</h2>
+    <div class="row">
+      <label for="s0" title="Größenregel B0: entfernen, wenn Höhe h / Bauteilgröße L unter dieser Schwelle liegt">Schwelle h/L (Regel B0)</label>
+      <span class="inp"><input id="s0" type="number" step="0.1" min="0" value="2"><em>%</em></span>
+    </div>
+    <div class="bulk">
+      <button id="all-suggest">Vorschlag übernehmen</button>
+      <button id="all-remove">Alle entfernen</button>
+      <button id="all-keep">Alle behalten</button>
+    </div>
+    <p class="hint">Klick auf ein Feature im Bild oder in der Liste schaltet zwischen <b class="c-remove">entfernen</b> und <b class="c-keep">behalten</b> um.</p>
+    <div id="counts" class="counts"></div>
+    <ul id="flist" class="flist"></ul>
+  </section>
+
+  <section id="step-export" class="step disabled">
+    <h2><span class="num">4</span> Exportieren</h2>
+    <div class="row">
+      <label for="outunit">Einheit der Ausgabe</label>
+      <select id="outunit"><option value="m" selected>m (für OpenFOAM)</option><option value="mm">mm</option></select>
+    </div>
+    <label class="check"><input id="preview" type="checkbox"> Ergebnis im Bild anzeigen</label>
+    <button id="export" class="primary">STL + Protokoll herunterladen</button>
+    <p id="exportinfo" class="info"></p>
+  </section>
+  <footer>Vorschläge nach Größenregel B0. Die strömungsbewusste Empfehlung folgt in Stufe 3.</footer>
+</aside>
+
+<main id="view">
+  <canvas id="c"></canvas>
+  <div id="legend">
+    <span><i class="sw base"></i>Bauteil</span>
+    <span><i class="sw remove"></i>entfernen</span>
+    <span><i class="sw keep"></i>behalten</span>
+    <span><i class="sw sel"></i>ausgewählt</span>
+  </div>
+  <div id="tip"></div>
+  <div id="busy" hidden><div class="spin"></div><span id="busytext">Rechne…</span></div>
+  <div id="empty">STL links laden oder die Beispielplatte öffnen.</div>
+  <div id="toast" hidden></div>
+</main>
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

@@ -8,7 +8,7 @@ Was im Hintergrund passiert: OpenFOAM läuft nur unter Linux. Windows bringt daf
 
 1. Die ZIP-Datei `CFD-Start-Windows.zip` aus dem Projekt herunterladen. Alternativ auf https://github.com/TiLe08/CFD-Defeaturing-AI auf den grünen Knopf **Code** und dann **Download ZIP** klicken.
 2. Rechtsklick auf die ZIP-Datei, **Alle extrahieren…**, als Ziel z. B. `Dokumente` wählen.
-3. Den entpackten Ordner öffnen und darin den Ordner `windows`. Dort liegen drei Dateien: `1_WSL_installieren`, `2_Einrichten`, `3_AP2_rechnen`.
+3. Den entpackten Ordner öffnen und darin den Ordner `windows`. Dort liegen vier Dateien: `1_WSL_installieren`, `2_Einrichten`, `3_AP2_rechnen`, `4_Defeaturing_Tool`.
 
 Falls Windows beim Doppelklick „Der Computer wurde durch Windows geschützt“ meldet: auf **Weitere Informationen** und dann **Trotzdem ausführen** klicken. Die Skripte sind kurz und stehen offen im Repo.
 
@@ -36,6 +36,17 @@ Falls Windows beim Doppelklick „Der Computer wurde durch Windows geschützt“
 3. Die Datei `fuer_claude.txt` aus diesem Ordner an Claude schicken (hochladen oder den Inhalt kopieren).
 
 Schritt 3 kannst du jederzeit wiederholen. Er holt sich automatisch den neuesten Code und rechnet nur, was noch fehlt.
+
+## Schritt 4: Defeaturing-Tool (STL prüfen und bereinigen)
+
+1. Doppelklick auf `4_Defeaturing_Tool`. Beim ersten Start werden noch ein paar Pakete installiert (ca. 1 Minute).
+2. Der Browser öffnet sich mit dem Tool. Das schwarze Fenster offen lassen, solange du das Tool benutzt.
+3. Links die STL hineinziehen und die Einheit angeben, dann **Features suchen**. Zum Ausprobieren gibt es **Beispielplatte laden**.
+4. Im Bild auf ein Feature klicken schaltet zwischen grün (entfernen) und rot (behalten) um.
+5. **STL + Protokoll herunterladen.** Eine Kopie landet zusätzlich im Ordner `CFD-Ergebnisse\Defeaturing` in deinem Benutzerordner.
+6. Fertig? Das schwarze Fenster schließen.
+
+Mehr dazu, auch zu den Grenzen: `docs/defeaturing_tool.md`.
 
 ## Wenn etwas schiefgeht
 
