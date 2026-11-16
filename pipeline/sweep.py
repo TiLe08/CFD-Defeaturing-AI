@@ -310,8 +310,8 @@ def _run_one(case: str, bashrc: str | None, no_fo: bool) -> str:
 
 def run(out: Path, case_ids: list[str], workers: int, bashrc: str | None,
         no_fo: bool = False) -> None:
-    todo = [out / c for c in case_ids if rc.load_status(out / c)["state"] != "solved"]
-    print(f"{len(case_ids)} cases, {len(case_ids) - len(todo)} already solved, "
+    todo = [out / c for c in case_ids if rc.needs_run(out / c)]
+    print(f"{len(case_ids)} cases, {len(case_ids) - len(todo)} complete or failed, "
           f"{len(todo)} to run on {workers} workers")
     with ProcessPoolExecutor(max_workers=workers) as ex:
         futs = [ex.submit(_run_one, str(c), bashrc, no_fo) for c in todo]

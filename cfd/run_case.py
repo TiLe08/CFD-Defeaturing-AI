@@ -36,7 +36,11 @@ SNAPPY_FAMILIES = {"F1": (f1_channel, f1_channel.F1Params),
 
 TEMPLATES = ROOT / "cfd" / "templates"
 STEPS = ("blockMesh", "surfaceFeatureExtract", "snappyHexMesh", "extrudeMesh",
-         "fix2D", "checkMesh", "simpleFoam", "postprocess")
+         "fix2D", "checkMesh", "simpleFoam", "scalarTransport", "postprocess")
+# Heat transfer as a passive scalar on the frozen flow field (single phase,
+# constant properties, no conjugate heat transfer). Pr of water at about
+# 60 to 80 degC, the operating range of PEM/AEM electrolyzers.
+THERMAL_DEFAULTS = {"Pr": 3.0, "max_iter": 60, "res_T": 1e-8}
 # Refinement history from snappyHexMesh, invalid after extrudeMesh.
 STALE_MESH_FILES = ("cellLevel", "pointLevel", "level0Edge", "surfaceIndex")
 
@@ -104,7 +108,13 @@ def placeholders(spec: dict) -> dict:
     s = spec["solver"]
     vals.update(U=spec["flow"]["U"], NU=spec["flow"]["nu"],
                 MAX_ITER=s["max_iter"], RES_P=s["res_p"], RES_U=s["res_u"])
+    th = thermal_settings(spec)
+    vals.update(DT=spec["flow"]["nu"] / th["Pr"], T_ITER=th["max_iter"], RES_T=th["res_T"])
     return vals
+
+
+def thermal_settings(spec: dict) -> dict:
+    return {**THERMAL_DEFAULTS, **spec.get("thermal", {})}
 
 
 def _fmt(v) -> str:
@@ -127,7 +137,7 @@ def build_case(case: Path, spec: dict) -> None:
     tmpl = TEMPLATES / spec["template"]
     values = placeholders(spec)
     for src in tmpl.rglob("*"):
-        if src.is_file():
+        if src.is_file() and src.relative_to(tmpl).parts[0] != "thermal":
             dst = case / src.relative_to(tmpl)
             dst.parent.mkdir(parents=True, exist_ok=True)
             dst.write_text(render(src.read_text(), values))
@@ -149,6 +159,15 @@ def build_case(case: Path, spec: dict) -> None:
 # --------------------------------------------------------------------------
 # Status handling
 # --------------------------------------------------------------------------
+
+def needs_run(case: Path) -> bool:
+    """Not failed and some step missing (also for cases solved before a new step)."""
+    st = load_status(case)
+    if st["state"] == "failed":
+        return False
+    spec = json.loads((case / "spec.json").read_text())
+    return st["state"] != "solved" or any(s not in st["done"] for s in steps_for(spec))
+
 
 def load_status(case: Path) -> dict:
     f = case / "status.json"
@@ -206,6 +225,32 @@ def fix_2d(case: Path, patches=("front", "back"), walls=()) -> None:
     f.write_text(txt)
 
 
+def scalar_transport(case: Path, bashrc: str | None) -> None:
+    """Solve T in case/thermal on the final U and phi of simpleFoam."""
+    th = case / "thermal"
+    t = postprocess.latest_time(case)
+    spec = json.loads((case / "spec.json").read_text())
+    tmpl = TEMPLATES / spec["template"] / "thermal"
+    values = placeholders(spec)
+    for src in tmpl.rglob("*"):  # also for cases built before this step existed
+        if src.is_file():
+            dst = th / src.relative_to(tmpl)
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_text(render(src.read_text(), values))
+    link = th / "constant" / "polyMesh"
+    if not link.exists():
+        link.symlink_to(Path("..") / ".." / "constant" / "polyMesh")
+    for d in th.iterdir():  # results of an earlier attempt
+        try:
+            if float(d.name) > 0:
+                shutil.rmtree(d)
+        except ValueError:
+            pass
+    for name in ("U", "phi"):
+        shutil.copy(t / name, th / "0" / name)
+    foam(th, "scalarTransportFoam", [], bashrc)
+
+
 def run_step(case: Path, step: str, spec: dict, bashrc: str | None,
              no_fo: bool = False) -> None:
     if step == "blockMesh":
@@ -226,12 +271,18 @@ def run_step(case: Path, step: str, spec: dict, bashrc: str | None,
         foam(case, "checkMesh", [], bashrc)
     elif step == "simpleFoam":
         foam(case, "simpleFoam", ["-noFunctionObjects"] if no_fo else [], bashrc)
+    elif step == "scalarTransport":
+        scalar_transport(case, bashrc)
     elif step == "postprocess" and is_a1(spec):
         res = case_a1.collect(case, spec)
         (case / "result.json").write_text(json.dumps(res, indent=2))
     elif step == "postprocess":
         lay = mesh_layout(spec)
-        res = postprocess.collect(case, spec, d_bg=lay["_d"], slot_x=lay["_slot_x"])
+        p = family_params(spec)
+        ts = thermal_settings(spec)
+        thermal = {"H": p.H, "L_heat": p.L, "Pr": ts["Pr"], "res_T": ts["res_T"]}
+        res = postprocess.collect(case, spec, d_bg=lay["_d"], slot_x=lay["_slot_x"],
+                                  thermal=thermal)
         (case / "result.json").write_text(json.dumps(res, indent=2))
     else:
         raise ValueError(step)
@@ -263,6 +314,9 @@ def run_case(case: Path, bashrc: str | None = None, build_only: bool = False,
             return st
         st["done"].append(step)
         st["times"][step] = round(time.time() - t0, 2)
+        # a step that ran (again) invalidates the ones after it
+        later = steps_for(spec)[steps_for(spec).index(step) + 1:]
+        st["done"] = [d for d in st["done"] if d not in later]
         st["state"] = "meshed" if step == "checkMesh" else st["state"]
         save_status(case, st)
     st["state"] = "solved"

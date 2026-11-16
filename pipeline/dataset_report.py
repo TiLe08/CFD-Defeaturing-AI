@@ -50,9 +50,26 @@ def report(raw: Path, design: str, out_parquet: Path) -> str:
         lines.append(f"| {kind} | {len(g)} | " + " | ".join(cells) + " |")
     lines.append("")
 
+    if "dNu_rel" in ok:
+        okt = ok[ok.dNu_rel.notna() & ok.get("excluded_th", pd.Series(index=ok.index)).isna()]
+        lines += ["## Klassenbalance Wärmeübergang (Nusselt-Zahl)", "",
+                  f"{len(okt)} Features mit gültiger Temperaturrechnung.", "",
+                  "| Typ | n | " + " | ".join(f"τ = {t:.1%}".replace(".", ",") for t in TAUS) + " |",
+                  "| --- | --- | " + " | ".join("---" for _ in TAUS) + " |"]
+        for kind, g in [("alle", okt), *okt.groupby("kind")]:
+            cells = [f"{g[f'relevant_th_tau{t * 1000:03.0f}'].sum()} "
+                     f"({g[f'relevant_th_tau{t * 1000:03.0f}'].mean():.0%})" for t in TAUS]
+            lines.append(f"| {kind} | {len(g)} | " + " | ".join(cells) + " |")
+        both = okt.relevant_tau010 & okt.relevant_th_tau010
+        lines += ["", f"Bei τ = 1 %: {both.sum()} Features für beide relevant, "
+                  f"{(okt.relevant_tau010 & ~okt.relevant_th_tau010).sum()} nur für den Druck, "
+                  f"{(~okt.relevant_tau010 & okt.relevant_th_tau010).sum()} nur für die Wärme.", ""]
+
     lines += ["## Wertebereiche", "",
               "| Größe | Min | Median | Max |", "| --- | --- | --- | --- |"]
-    for col in ("Re", "h_over_L", "w_over_L", "h_plus", "h_over_delta", "dQ_rel"):
+    for col in ("Re", "h_over_L", "w_over_L", "h_plus", "h_over_delta", "dQ_rel", "dNu_rel"):
+        if col not in ok:
+            continue
         s = ok[col]
         lines.append(f"| {col} | {s.min():.3g} | {s.median():.3g} | {s.max():.3g} |")
     lines.append("")

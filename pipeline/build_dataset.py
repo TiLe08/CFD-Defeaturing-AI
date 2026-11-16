@@ -125,6 +125,14 @@ def build(raw: Path) -> pd.DataFrame:
                            runtime_without_s=r0["runtime_clock_s"])
                 for tau in TAUS:
                     row[f"relevant_tau{tau * 1000:03.0f}"] = bool(abs(dq) > tau)
+                # second, separate label: heat transfer (Nusselt number)
+                if "Nu" in rw and "Nu" in r0:
+                    dnu = (rw["Nu"] - r0["Nu"]) / r0["Nu"]
+                    row.update(Nu_with=rw["Nu"], Nu_without=r0["Nu"], dNu_rel=dnu)
+                    for tau in TAUS:
+                        row[f"relevant_th_tau{tau * 1000:03.0f}"] = bool(abs(dnu) > tau)
+                    if not (rw.get("th_converged") and r0.get("th_converged")):
+                        row["excluded_th"] = "thermal not converged"
             row["excluded"] = reason
             rows.append(row)
     return pd.DataFrame(rows)

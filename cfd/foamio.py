@@ -77,7 +77,7 @@ def _values(token: str, ncomp: int) -> np.ndarray:
 
 def _ncomp(text: str) -> int:
     cls = re.search(r"class\s+(\w+);", text).group(1)
-    return {"volScalarField": 1, "volVectorField": 3}[cls]
+    return {"volScalarField": 1, "volVectorField": 3, "surfaceScalarField": 1}[cls]
 
 
 def read_field(f: Path) -> tuple[np.ndarray, dict[str, np.ndarray | None]]:

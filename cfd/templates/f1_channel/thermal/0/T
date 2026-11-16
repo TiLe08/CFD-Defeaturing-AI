@@ -1,0 +1,21 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       volScalarField;
+    location    "0";
+    object      T;
+}
+// Dimensionless temperature theta = (T - T_in) / (T_wall - T_in).
+// Feature wall (bottomWall) isothermal, all other walls adiabatic.
+dimensions      [0 0 0 1 0 0 0];
+internalField   uniform 0;
+boundaryField
+{
+    inlet       { type fixedValue; value uniform 0; }
+    outlet      { type zeroGradient; }
+    bottomWall  { type fixedValue; value uniform 1; }
+    topWall     { type zeroGradient; }
+    "(front|back)" { type empty; }
+    "(outer|sides)" { type zeroGradient; }
+}

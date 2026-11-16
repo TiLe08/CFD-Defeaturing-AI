@@ -1,0 +1,18 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      fvSchemes;
+}
+ddtSchemes      { default steadyState; }
+gradSchemes     { default Gauss linear; grad(T) cellLimited Gauss linear 1; }
+divSchemes
+{
+    default         none;
+    div(phi,T)      bounded Gauss linearUpwind grad(T);
+}
+laplacianSchemes { default Gauss linear limited corrected 0.5; }
+interpolationSchemes { default linear; }
+snGradSchemes   { default limited corrected 0.5; }
