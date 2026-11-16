@@ -18,7 +18,7 @@ class Feature:
     s: float  # centre position along the wall [m]
     w: float  # width along the wall [m]
     h: float  # depth (groove) or height (rib) [m]
-    wall: str = ""  # wall carrying the feature where a family has several (F2: upper/lower)
+    wall: str = ""  # wall carrying the feature where a family has several (A1: upper/lower)
 
     def __post_init__(self):
         if self.kind not in FEATURE_TYPES:

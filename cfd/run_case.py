@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from cfd import case_f2, postprocess  # noqa: E402
+from cfd import case_a1, postprocess  # noqa: E402
 from geometry.features import Feature  # noqa: E402
 from geometry.families import f1_channel  # noqa: E402
 
@@ -79,17 +79,17 @@ def mesh_layout(spec: dict) -> dict:
     }
 
 
-def is_f2(spec: dict) -> bool:
-    return spec.get("family") == "F2"
+def is_a1(spec: dict) -> bool:
+    return spec.get("family") == "A1"
 
 
 def steps_for(spec: dict) -> tuple[str, ...]:
-    return case_f2.STEPS if is_f2(spec) else STEPS
+    return case_a1.STEPS if is_a1(spec) else STEPS
 
 
 def placeholders(spec: dict) -> dict:
-    if is_f2(spec):
-        return case_f2.placeholders(spec)
+    if is_a1(spec):
+        return case_a1.placeholders(spec)
     vals = {k: v for k, v in mesh_layout(spec).items() if not k.startswith("_")}
     s = spec["solver"]
     vals.update(U=spec["flow"]["U"], NU=spec["flow"]["nu"],
@@ -122,8 +122,8 @@ def build_case(case: Path, spec: dict) -> None:
             dst.parent.mkdir(parents=True, exist_ok=True)
             dst.write_text(render(src.read_text(), values))
     (case / "case.foam").touch()  # marker file so ParaView can open the case
-    if is_f2(spec):
-        case_f2.build_geometry(case, spec)
+    if is_a1(spec):
+        case_a1.build_geometry(case, spec)
         return
     p = f1_channel.F1Params(**spec["params"])
     feats = [Feature.from_dict(f) for f in spec["features"]]
@@ -206,17 +206,17 @@ def run_step(case: Path, step: str, spec: dict, bashrc: str | None,
     elif step == "extrudeMesh":
         foam(case, "extrudeMesh", [], bashrc)
     elif step == "gmsh":
-        case_f2.mesh(case, spec)
+        case_a1.mesh(case, spec)
     elif step == "gmshToFoam":
-        foam(case, "gmshToFoam", [case_f2.MSH], bashrc)
+        foam(case, "gmshToFoam", [case_a1.MSH], bashrc)
     elif step == "fix2D":
-        fix_2d(case, walls=("profile",) if is_f2(spec) else ())
+        fix_2d(case, walls=("profile",) if is_a1(spec) else ())
     elif step == "checkMesh":
         foam(case, "checkMesh", [], bashrc)
     elif step == "simpleFoam":
         foam(case, "simpleFoam", ["-noFunctionObjects"] if no_fo else [], bashrc)
-    elif step == "postprocess" and is_f2(spec):
-        res = case_f2.collect(case, spec)
+    elif step == "postprocess" and is_a1(spec):
+        res = case_a1.collect(case, spec)
         (case / "result.json").write_text(json.dumps(res, indent=2))
     elif step == "postprocess":
         lay = mesh_layout(spec)

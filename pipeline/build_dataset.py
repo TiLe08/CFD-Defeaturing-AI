@@ -53,7 +53,7 @@ def exclusion_reason(c: dict | None) -> str | None:
 
 
 def _q(r: dict) -> float:
-    """Target quantity: Q (F2: c_d), F1 results store it as dp."""
+    """Target quantity: Q (A1: c_d), F1 results store it as dp."""
     return float(r["Q"] if "Q" in r else r["dp"])
 
 
@@ -63,18 +63,18 @@ def _rel_sigma(r: dict) -> float:
 
 
 def reference_length(spec: dict) -> float:
-    return spec["params"]["c"] if spec["family"] == "F2" else spec["params"]["H"]
+    return spec["params"]["c"] if spec["family"] == "A1" else spec["params"]["H"]
 
 
 def wall_tables(case_dir: Path, spec: dict, f: Feature):
     """Wall carrying the feature, all walls, and the cap for delta_99.
 
     F1: bottom and top wall of the channel, delta capped at half the height.
-    F2: upper and lower side of the profile; the stagnation region
+    A1: upper and lower side of the profile; the stagnation region
     (x < 0.02 c) is left out of the feature wall so that the stagnation point
     is not taken for separation. delta capped at 0.1 c.
     """
-    if spec["family"] == "F2":
+    if spec["family"] == "A1":
         c = spec["params"]["c"]
         df = pd.read_csv(case_dir / "wall_profile.csv")
         sides = {s: df[df.side == s] for s in ("upper", "lower")}

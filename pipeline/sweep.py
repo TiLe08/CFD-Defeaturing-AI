@@ -138,55 +138,55 @@ def design_f1_lhs(n_base: int = 30, k: int = 8, seed: int = F1_SEED) -> list[dic
     return specs
 
 
-# F2 (NACA profile, turbulent, k-omega SST, wall-resolved y+ ~ 1). Sizes are
+# A1 (application example: NACA profile, turbulent, k-omega SST, wall-resolved y+ ~ 1). Sizes are
 # fractions of the chord. Settings are a first proposal and are fixed in the
-# F2 feasibility check (design "f2_trial"), like Gate 1 for F1.
-F2_MESH_FINE = {"far": 0.5, "wall": 0.004, "slot": 0.0005, "wake": 0.01,
+# A1 feasibility check (design "a1_trial"), like Gate 1 for F1.
+A1_MESH_FINE = {"far": 0.5, "wall": 0.004, "slot": 0.0005, "wake": 0.01,
                 "bl_thickness": 0.01, "slot_bl_thickness": 0.0002, "near_dist": 1.0, "ratio": 1.2, "y_plus": 1.0,
                 "dz": 0.001, "slot_side": "upper"}
-F2_MESH_COARSE = dict(F2_MESH_FINE, wall=0.008, slot=0.002, wake=0.02, ratio=1.3)
-F2_SOLVER = {"max_iter": 4000, "res_p": 1e-5, "res_u": 1e-6, "n_avg": 200,
+A1_MESH_COARSE = dict(A1_MESH_FINE, wall=0.008, slot=0.002, wake=0.02, ratio=1.3)
+A1_SOLVER = {"max_iter": 4000, "res_p": 1e-5, "res_u": 1e-6, "n_avg": 200,
              "q_rel_tol": 1e-4}
 
 
-def _spec_f2(case_id, base_id, role, params, features, flow, mesh):
+def _spec_a1(case_id, base_id, role, params, features, flow, mesh):
     return {"case_id": case_id, "base_id": base_id, "role": role,
-            "family": "F2", "template": "f2_naca",
+            "family": "A1", "template": "a1_naca",
             "params": params, "features": features, "flow": flow,
-            "mesh": deepcopy(mesh), "solver": dict(F2_SOLVER)}
+            "mesh": deepcopy(mesh), "solver": dict(A1_SOLVER)}
 
 
-def design_f2_trial() -> list[dict]:
-    """F2 feasibility check on one base configuration (NACA 2412, 4 deg, Re 3e5).
+def design_a1_trial() -> list[dict]:
+    """A1 feasibility check on one base configuration (NACA 2412, 4 deg, Re 3e5).
 
     Same roles as AP2: reference, features, null test (slot mesh with a
     finer far field), coarse base run.
     """
-    from geometry.families.f2_naca import F2Params
+    from geometry.families.a1_naca import A1Params
 
-    p = F2Params()
+    p = A1Params()
     params = {k: getattr(p, k) for k in ("c", "m", "p", "t", "alpha_deg", "x_up", "x_down",
                                           "y_half", "slot_s", "slot_w_max", "slot_h_max", "n_side")}
     c, nu, Re = p.c, 1.5e-5, 3e5
     flow = {"U": Re * nu / c, "nu": nu, "Re": Re, "turb_intensity": 0.005, "nut_ratio": 1.0}
-    base = "f2_trial_b000"
-    specs = [_spec_f2(f"{base}_without", base, "without", params, [], flow, F2_MESH_FINE)]
+    base = "a1_trial_b000"
+    specs = [_spec_a1(f"{base}_without", base, "without", params, [], flow, A1_MESH_FINE)]
     for kind in ("groove", "rib"):
         for h in (0.002, 0.005, 0.01):
             f = {"kind": kind, "s": p.slot_s * c, "w": 0.05 * c, "h": h * c, "wall": "upper"}
-            specs.append(_spec_f2(f"{base}_with_{kind}_h{h:g}", base, "with", params, [f],
-                                  flow, F2_MESH_FINE))
+            specs.append(_spec_a1(f"{base}_with_{kind}_h{h:g}", base, "with", params, [f],
+                                  flow, A1_MESH_FINE))
     # null tests: window meshed anew (outer mesh shared), and outer mesh changed
-    specs.append(_spec_f2(f"{base}_null_remesh", base, "null_remesh", params, [], flow,
-                          F2_MESH_FINE))
-    specs.append(_spec_f2(f"{base}_null_far", base, "null_far", params, [], flow,
-                          dict(F2_MESH_FINE, far=0.4)))
-    specs.append(_spec_f2(f"{base}_base_coarse", base, "base_coarse", params, [], flow,
-                          F2_MESH_COARSE))
+    specs.append(_spec_a1(f"{base}_null_remesh", base, "null_remesh", params, [], flow,
+                          A1_MESH_FINE))
+    specs.append(_spec_a1(f"{base}_null_far", base, "null_far", params, [], flow,
+                          dict(A1_MESH_FINE, far=0.4)))
+    specs.append(_spec_a1(f"{base}_base_coarse", base, "base_coarse", params, [], flow,
+                          A1_MESH_COARSE))
     return specs
 
 
-DESIGNS = {"ap2": design_ap2, "f1": design_f1_lhs, "f2_trial": design_f2_trial}
+DESIGNS = {"ap2": design_ap2, "f1": design_f1_lhs, "a1_trial": design_a1_trial}
 
 
 def plan(specs: list[dict], out: Path) -> pd.DataFrame:

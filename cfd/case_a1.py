@@ -1,7 +1,7 @@
-"""F2 (NACA profile, turbulent) case: placeholders, mesh and post-processing.
+"""A1 (NACA profile, turbulent) case: placeholders, mesh and post-processing.
 
 The F1 path in run_case.py stays as it is; run_case dispatches on
-spec["family"] and uses these functions for F2.
+spec["family"] and uses these functions for A1.
 """
 from __future__ import annotations
 
@@ -15,15 +15,15 @@ import pandas as pd
 from cfd import foamio, postprocess
 from cfd.mesh_gmsh import first_cell_height, mesh_profile
 from geometry.features import Feature
-from geometry.families import f2_naca
+from geometry.families import a1_naca
 
 STEPS = ("gmsh", "gmshToFoam", "fix2D", "checkMesh", "simpleFoam", "postprocess")
 MSH = "profile.msh"
 OUTER_CACHE = "_outer_meshes"  # next to the case folders, shared by a base
 
 
-def params(spec: dict) -> f2_naca.F2Params:
-    return f2_naca.F2Params(**spec["params"])
+def params(spec: dict) -> a1_naca.A1Params:
+    return a1_naca.A1Params(**spec["params"])
 
 
 def mesh_sizes(spec: dict) -> dict:
@@ -50,20 +50,20 @@ def placeholders(spec: dict) -> dict:
 def build_geometry(case: Path, spec: dict) -> None:
     p = params(spec)
     feats = [Feature.from_dict(f) for f in spec["features"]]
-    _, meta = f2_naca.build(p, feats)
+    _, meta = a1_naca.build(p, feats)
     (case / "geometry.json").write_text(json.dumps(meta, indent=2))
 
 
 def mesh(case: Path, spec: dict) -> dict:
     p = params(spec)
     feats = [Feature.from_dict(f) for f in spec["features"]]
-    solid = f2_naca.profile_polygon(p, feats)
+    solid = a1_naca.profile_polygon(p, feats)
     side = spec["mesh"].get("slot_side", "upper")
     sizes = mesh_sizes(spec)
-    window = f2_naca.slot_box(p, side)
-    zone = f2_naca.feature_zone(p, side, margin=3 * sizes["slot"])
-    stats = mesh_profile(case / MSH, f2_naca.domain_box(p), solid,
-                         f2_naca.profile_polygon(p, []), window, zone, sizes,
+    window = a1_naca.slot_box(p, side)
+    zone = a1_naca.feature_zone(p, side, margin=3 * sizes["slot"])
+    stats = mesh_profile(case / MSH, a1_naca.domain_box(p), solid,
+                         a1_naca.profile_polygon(p, []), window, zone, sizes,
                          dz=spec["mesh"]["dz"] * p.c, cache_dir=case.parent / OUTER_CACHE)
     (case / "mesh.json").write_text(json.dumps(stats))
     return stats
@@ -100,8 +100,8 @@ def wall_profile(case: Path, spec: dict, mesh_: foamio.Mesh) -> tuple[pd.DataFra
     """Wall data on the profile with chordwise body-frame x and side."""
     p = params(spec)
     df, src = postprocess.wall_data(case, mesh_, "profile", spec["flow"]["nu"])
-    xb = f2_naca.body_frame(df[["x", "y"]].to_numpy(), p)
-    upper, lower = f2_naca.naca4(p.m, p.p, p.t, p.c, p.n_side)
+    xb = a1_naca.body_frame(df[["x", "y"]].to_numpy(), p)
+    upper, lower = a1_naca.naca4(p.m, p.p, p.t, p.c, p.n_side)
     yc = 0.5 * (np.interp(xb[:, 0], upper[:, 0], upper[:, 1])
                 + np.interp(xb[:, 0], lower[:, 0], lower[:, 1]))
     df["x_global"], df["y_global"] = df.x, df.y
@@ -129,9 +129,9 @@ def normal_profile(case: Path, spec: dict, mesh_: foamio.Mesh) -> pd.DataFrame:
     """Tangential speed along the wall normal above the slot (clean profile)."""
     p = params(spec)
     side = spec["mesh"].get("slot_side", "upper")
-    upper, lower = f2_naca.naca4(p.m, p.p, p.t, p.c, p.n_side)
+    upper, lower = a1_naca.naca4(p.m, p.p, p.t, p.c, p.n_side)
     pts, sign = (upper, 1.0) if side == "upper" else (lower, -1.0)
-    pt, tan, nrm = f2_naca.surface_frame(pts, p.slot_s * p.c, sign)
+    pt, tan, nrm = a1_naca.surface_frame(pts, p.slot_s * p.c, sign)
     a = np.deg2rad(-p.alpha_deg)
     rot = np.array([[np.cos(a), -np.sin(a)], [np.sin(a), np.cos(a)]])
     o = np.array([0.25 * p.c, 0.0])
