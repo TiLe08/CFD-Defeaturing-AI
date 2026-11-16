@@ -28,6 +28,17 @@ Die Implementierung entstand unter Verwendung des KI-Assistenten Claude (Anthrop
 
 Die Ergebnisse von Claudes Testlauf liegen in `docs/ap2_testlauf_claude_v1912.md` als Vergleichswerte.
 
+## Stand AP3 (Entwurf)
+
+| Baustein | Datei | Stand |
+| --- | --- | --- |
+| F1-Versuchsplan (30 Basen × 8 Features, LHS, Re 20–500, h/H 0,05–0,5, w/H 0,1–2) | `pipeline/sweep.py` (`--design f1`) | in Claudes Sandbox durchgerechnet |
+| Datensatz-Bericht (Ausschlüsse, Klassenbalance, Wertebereiche) | `pipeline/dataset_report.py` | auf F1 |
+| F2: NACA-4-Profil mit Nut/Rippe, turbulent (k-ω SST, y⁺ ≈ 1) | `geometry/families/f2_naca.py`, `cfd/case_f2.py` | Probelauf (`--design f2_trial`) |
+| F2-Netz mit gmsh: Außennetz je Basis einmal vernetzt und wiederverwendet, nur ein Fenster am Feature neu (Grenzschicht aus Vierecken, im Fenster dünne Schicht) | `cfd/mesh_gmsh.py` | alle Probefälle bestehen checkMesh; Außennetz knotengleich |
+
+Unter Windows: `windows/5_F1_Datensatz_rechnen.bat` (ruft `scripts/run_design.sh f1` auf).
+
 ## Einrichtung (WSL2/Ubuntu)
 
 ```bash
@@ -86,18 +97,23 @@ Claudes Umgebung hat nur OpenFOAM v1912 aus dem Ubuntu-Paket. Dort brechen alle 
 - **Wanddaten aus den Feldern statt aus Sampling-Function-Objects:** Das Ausgabeformat der Sampling-Function-Objects hat sich zwischen ESI-Versionen geändert. Die Feld- und Netzdateien sind stabil, `cfd/foamio.py` liest sie direkt.
 - **Verfeinerungsbox aus der maximalen Slot-Größe:** Die Box hängt nur von der Basiskonfiguration ab. Damit teilt sich ein Lauf „ohne Feature“ mit allen K Features derselben Basis, statt je Feature einen eigenen Referenzlauf zu brauchen.
 - **Grobe Basisrechnung je Basis** (`base_coarse`) als Quelle der Strömungsdeskriptoren, wie im Konzept beschrieben.
+- **F2 mit gmsh statt snappyHexMesh:** snappy verfeinert isotrop, die Wandauflösung für y⁺ ≈ 1 würde im 2D-Slab auch in z gelten. gmsh vernetzt die Ebene direkt mit Viereck-Grenzschicht und extrudiert eine Zelle.
+- **F2-Außennetz je Basis wiederverwendet:** Das Grenzschicht-Feld von gmsh liefert bei jeder Änderung (und selbst bei gleicher Eingabe) ein anderes Netz. Das ergab in den ersten Probeläufen ein Rauschen von einigen Prozent in c_d. Jetzt wird nur ein Fenster um den Slot je Fall neu vernetzt; der Rest ist knotengleich.
+- **F1-Klassenbalance:** Rippen sind meist relevant, Nuten selten. Die Bereiche bleiben, Metriken werden zusätzlich je Typ berichtet (Entscheidung Tim, 12.11.2026).
 
 ## Struktur
 
 ```
-geometry/    features.py, families/f1_channel.py
-cfd/         templates/f1_channel/, run_case.py, postprocess.py, foamio.py
+geometry/    features.py, families/f1_channel.py, families/f2_naca.py
+cfd/         templates/f1_channel/, templates/f2_naca/, run_case.py, case_f2.py, mesh_gmsh.py,
+             postprocess.py, foamio.py
 descriptors/ geometric.py, flow.py
-pipeline/    sweep.py (Design + Batch), build_dataset.py, ap2_report.py (Gate 1)
+pipeline/    sweep.py (Design + Batch), build_dataset.py, ap2_report.py (Gate 1),
+             dataset_report.py
 tests/       pytest, ohne OpenFOAM
 docs/        Vergleichswerte
 env/         environment.yml, requirements.txt
 data/        raw/, processed/ (nicht in git)
 ```
 
-Noch nicht enthalten: F2–F5, STL-Pipeline (AP5), Modelle und Evaluation (AP6). `design_f1_lhs` in `pipeline/sweep.py` ist ein Entwurf für AP4; die Parameterbereiche werden nach Gate 1 festgelegt.
+Noch nicht enthalten: voller F2-Versuchsplan, F3–F5, Modelle und Evaluation (AP6).

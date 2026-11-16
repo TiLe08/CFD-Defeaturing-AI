@@ -19,3 +19,4 @@ dependencies:
   - pip
   - pip:
       - manifold3d>=2.4
+      - gmsh>=4.11

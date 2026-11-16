@@ -52,9 +52,36 @@ def exclusion_reason(c: dict | None) -> str | None:
     return None
 
 
+def _q(r: dict) -> float:
+    """Target quantity: Q (F2: c_d), F1 results store it as dp."""
+    return float(r["Q"] if "Q" in r else r["dp"])
+
+
 def _rel_sigma(r: dict) -> float:
-    v = r.get("dp_rel_sigma")
+    v = r.get("Q_rel_sigma", r.get("dp_rel_sigma"))
     return float("nan") if v is None else float(v)
+
+
+def reference_length(spec: dict) -> float:
+    return spec["params"]["c"] if spec["family"] == "F2" else spec["params"]["H"]
+
+
+def wall_tables(case_dir: Path, spec: dict, f: Feature):
+    """Wall carrying the feature, all walls, and the cap for delta_99.
+
+    F1: bottom and top wall of the channel, delta capped at half the height.
+    F2: upper and lower side of the profile; the stagnation region
+    (x < 0.02 c) is left out of the feature wall so that the stagnation point
+    is not taken for separation. delta capped at 0.1 c.
+    """
+    if spec["family"] == "F2":
+        c = spec["params"]["c"]
+        df = pd.read_csv(case_dir / "wall_profile.csv")
+        sides = {s: df[df.side == s] for s in ("upper", "lower")}
+        wall = sides[f.wall]
+        return wall[wall.x >= 0.02 * c], list(sides.values()), 0.1 * c
+    walls = {n: pd.read_csv(case_dir / f"wall_{n}.csv") for n in ("bottomWall", "topWall")}
+    return walls["bottomWall"], list(walls.values()), 0.5 * spec["params"]["H"]
 
 
 def build(raw: Path) -> pd.DataFrame:
@@ -74,25 +101,24 @@ def build(raw: Path) -> pd.DataFrame:
                    "case_with": spec["case_id"],
                    "case_without": ref["spec"]["case_id"] if ref else None}
             reason = exclusion_reason(c) or exclusion_reason(ref) or exclusion_reason(coarse)
-            p = spec["params"]
-            L_ref, nu, U = p["H"], spec["flow"]["nu"], spec["flow"]["U"]
+            L_ref, nu, U = reference_length(spec), spec["flow"]["nu"], spec["flow"]["U"]
             if ref is not None and ref["result"] is not None:
                 wl = json.loads((ref["dir"] / "geometry.json").read_text())["wetted_length"]
                 row.update(geometric_descriptors(f, L_ref, wl, U * L_ref / nu))
             if coarse is not None and coarse["result"] is not None:
-                walls = {n: pd.read_csv(coarse["dir"] / f"wall_{n}.csv")
-                         for n in ("bottomWall", "topWall")}
                 prof_f = coarse["dir"] / "profile_slot.csv"
                 prof = pd.read_csv(prof_f) if prof_f.exists() else None
                 try:
-                    row.update(flow_descriptors(f, walls["bottomWall"], list(walls.values()),
-                                                prof, nu, U, L_ref, delta_cap=0.5 * L_ref))
+                    wall, all_walls, cap = wall_tables(coarse["dir"], coarse["spec"], f)
+                    row.update(flow_descriptors(f, wall, all_walls, prof, nu, U, L_ref,
+                                                delta_cap=cap))
                 except ValueError as exc:
                     reason = reason or f"descriptor: {exc}"
             if c["result"] is not None and ref is not None and ref["result"] is not None:
                 rw, r0 = c["result"], ref["result"]
-                dq = (rw["dp"] - r0["dp"]) / r0["dp"]
-                row.update(Q_with=rw["dp"], Q_without=r0["dp"], dQ_rel=dq,
+                q_w, q_0 = _q(rw), _q(r0)
+                dq = (q_w - q_0) / q_0
+                row.update(Q_with=q_w, Q_without=q_0, dQ_rel=dq,
                            sigma_iter_with=_rel_sigma(rw), sigma_iter_without=_rel_sigma(r0),
                            cells_with=rw["cells"], cells_without=r0["cells"],
                            runtime_with_s=rw["runtime_clock_s"],

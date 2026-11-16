@@ -11,7 +11,8 @@ say() { printf '\n=== %s\n' "$*"; }
 
 say "Schritt 1/5: Ubuntu-Pakete (Passwort deines Ubuntu-Benutzers wird abgefragt)"
 sudo apt-get update -qq
-sudo apt-get install -y -qq git curl python3 python3-venv python3-pip ca-certificates >/dev/null
+sudo apt-get install -y -qq git curl python3 python3-venv python3-pip ca-certificates \
+    libglu1-mesa libxcursor1 libxinerama1 libxft2 libxrender1 libxfixes3 >/dev/null
 
 find_bashrc() {
     ls -d /usr/lib/openfoam/openfoam*/etc/bashrc 2>/dev/null | sort -V | tail -1

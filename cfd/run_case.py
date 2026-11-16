@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from cfd import postprocess  # noqa: E402
+from cfd import case_f2, postprocess  # noqa: E402
 from geometry.features import Feature  # noqa: E402
 from geometry.families import f1_channel  # noqa: E402
 
@@ -79,7 +79,17 @@ def mesh_layout(spec: dict) -> dict:
     }
 
 
+def is_f2(spec: dict) -> bool:
+    return spec.get("family") == "F2"
+
+
+def steps_for(spec: dict) -> tuple[str, ...]:
+    return case_f2.STEPS if is_f2(spec) else STEPS
+
+
 def placeholders(spec: dict) -> dict:
+    if is_f2(spec):
+        return case_f2.placeholders(spec)
     vals = {k: v for k, v in mesh_layout(spec).items() if not k.startswith("_")}
     s = spec["solver"]
     vals.update(U=spec["flow"]["U"], NU=spec["flow"]["nu"],
@@ -111,6 +121,10 @@ def build_case(case: Path, spec: dict) -> None:
             dst = case / src.relative_to(tmpl)
             dst.parent.mkdir(parents=True, exist_ok=True)
             dst.write_text(render(src.read_text(), values))
+    (case / "case.foam").touch()  # marker file so ParaView can open the case
+    if is_f2(spec):
+        case_f2.build_geometry(case, spec)
+        return
     p = f1_channel.F1Params(**spec["params"])
     feats = [Feature.from_dict(f) for f in spec["features"]]
     z0, z1 = mesh_layout(spec)["_stl_z"]
@@ -119,8 +133,6 @@ def build_case(case: Path, spec: dict) -> None:
     tri.mkdir(parents=True, exist_ok=True)
     (tri / "channel.stl").write_text(f1_channel.to_multisolid_stl(regions))
     (case / "geometry.json").write_text(json.dumps(meta, indent=2))
-    # empty marker file so ParaView can open the case
-    (case / "case.foam").touch()
 
 
 # --------------------------------------------------------------------------
@@ -155,11 +167,12 @@ def foam(case: Path, app: str, args: list[str], bashrc: str | None) -> None:
         raise RuntimeError(f"{app} exited with {r.returncode} (see log.{app})")
 
 
-def fix_2d(case: Path, patches=("front", "back")) -> None:
+def fix_2d(case: Path, patches=("front", "back"), walls=()) -> None:
     """Make the extruded mesh a valid 2D mesh.
 
     Sets the side patches to empty in polyMesh/boundary and removes the
     refinement history of snappyHexMesh, which no longer matches the mesh.
+    Patches in walls get type wall (gmshToFoam writes every patch as patch).
     """
     poly = case / "constant" / "polyMesh"
     for name in STALE_MESH_FILES:
@@ -174,6 +187,11 @@ def fix_2d(case: Path, patches=("front", "back")) -> None:
         # inGroups of the original patch type would contradict "empty"
         pat_g = re.compile(rf"(\n\s*{name}\s*\n\s*\{{[^}}]*?)inGroups[^;]*;", re.S)
         txt = pat_g.sub(r"\g<1>inGroups 1(empty);", txt)
+    for name in walls:
+        pat = re.compile(rf"(\n\s*{name}\s*\n\s*\{{[^}}]*?type\s+)\w+;", re.S)
+        txt, n = pat.subn(r"\g<1>wall;", txt)
+        if n != 1:
+            raise RuntimeError(f"patch {name} not found in boundary file")
     f.write_text(txt)
 
 
@@ -187,12 +205,19 @@ def run_step(case: Path, step: str, spec: dict, bashrc: str | None,
         foam(case, "snappyHexMesh", ["-overwrite"], bashrc)
     elif step == "extrudeMesh":
         foam(case, "extrudeMesh", [], bashrc)
+    elif step == "gmsh":
+        case_f2.mesh(case, spec)
+    elif step == "gmshToFoam":
+        foam(case, "gmshToFoam", [case_f2.MSH], bashrc)
     elif step == "fix2D":
-        fix_2d(case)
+        fix_2d(case, walls=("profile",) if is_f2(spec) else ())
     elif step == "checkMesh":
         foam(case, "checkMesh", [], bashrc)
     elif step == "simpleFoam":
         foam(case, "simpleFoam", ["-noFunctionObjects"] if no_fo else [], bashrc)
+    elif step == "postprocess" and is_f2(spec):
+        res = case_f2.collect(case, spec)
+        (case / "result.json").write_text(json.dumps(res, indent=2))
     elif step == "postprocess":
         lay = mesh_layout(spec)
         res = postprocess.collect(case, spec, d_bg=lay["_d"], slot_x=lay["_slot_x"])
@@ -215,7 +240,7 @@ def run_case(case: Path, bashrc: str | None = None, build_only: bool = False,
     if build_only:
         return st
     st["error"] = None
-    for step in STEPS:
+    for step in steps_for(spec):
         if step in st["done"]:
             continue
         t0 = time.time()
@@ -240,7 +265,9 @@ def summary_line(case: Path) -> str:
     if st["state"] != "solved":
         return f"{name:<40} {st['state']:<8} {st.get('error') or ''}"
     r = json.loads((case / "result.json").read_text())
-    return (f"{name:<40} solved   dp={r['dp']:.6g} (rel. sigma {r['dp_rel_sigma']:.1e}) "
+    q_name, q = (r["Q_name"], r["Q"]) if "Q" in r else ("dp", r["dp"])
+    rel = r.get("Q_rel_sigma", r.get("dp_rel_sigma"))
+    return (f"{name:<40} solved   {q_name}={q:.6g} (rel. sigma {rel:.1e}) "
             f"cells={r['cells']} conv={r['converged']} it={r['iterations']} "
             f"t={r['runtime_clock_s']}s mesh_ok={r['checkmesh_ok']}")
 

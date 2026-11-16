@@ -8,5 +8,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - run: sudo apt-get install -y -qq libglu1-mesa libxcursor1 libxinerama1 libxft2 libxrender1 libxfixes3
       - run: pip install -r env/requirements.txt
       - run: python -m pytest -q
