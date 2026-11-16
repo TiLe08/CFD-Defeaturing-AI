@@ -43,15 +43,16 @@ testet. Alle STL-Dateien in Millimetern, binär, geschlossen (wasserdicht).
 ## F1_Flowfield-Kanal
 
 Ausschnitt einer Bipolarplatte mit einem Strömungskanal. Auf dem
-Kanalboden sitzt höchstens ein Feature: eine Nut (Vertiefung) oder eine
-Rippe (Erhebung), quer zur Strömung.
+Kanalboden sitzt höchstens ein Feature quer zur Strömung (Typen siehe
+unten).
 
 - `platte/`: das Bauteil (Plattenausschnitt). Der Kanal ist oben offen
   (dort läge die poröse Transportschicht) und an beiden Enden offen.
 - `fluid/`: der Strömungsraum im Kanal, so wie ihn die CFD sieht.
 - Strömung in +x, Kanalboden bei y = 0, Kanaltiefe in y, Kanalbreite in z.
 - Je Basiskonfiguration gibt es ein Modell ohne Feature (`..._without`)
-  und acht mit je einem Feature (`..._with_fN`).
+  und acht bzw. zehn mit je einem Feature (`..._with_fN`). Basen `f1_...`
+  haben Nuten und Rippen, Basen `f1x_...` die übrigen Feature-Typen.
 
 ## F2_Verteiler
 
@@ -66,6 +67,20 @@ Abzweige (Spalte `abzweig_ueber_feature`).
 - `fluid/`: der Strömungsraum.
 - Ebene x-y ist die Plattenebene, Tiefe in z.
 
+## Feature-Typen (Spalte `feature`)
+
+| Typ | Bedeutung | Querschnitt |
+| --- | --- | --- |
+| groove | Nut | Rechteck in die Wand |
+| rib | Rippe, Steg | Rechteck auf der Wand |
+| engraving | Gravur, Beschriftung | drei schmale Schlitze (je w/5) |
+| round_groove | Rundnut, Ausrundung | halbe Ellipse in die Wand |
+| chamfer_rib | Rippe mit Fase | Trapez, Fasen 45° |
+| bump | Noppe, Wulst | halbe Ellipse auf der Wand |
+| wedge | Stufe mit Rampe | steile Stufe gegen die Strömung, Rampe zurück |
+
+F2-Basen `f2x_...` tragen ebenfalls die neuen Typen.
+
 ## modelle.csv
 
 Eine Zeile je Modell: Familie, Basis, Rolle, Feature-Typ, Lage s (Mitte,
@@ -73,8 +88,9 @@ ab Kanaleintritt), Breite w, Höhe bzw. Tiefe h (alle in mm), h/H und w/H
 (H = Kanaltiefe) sowie die Reynolds-Zahl der CFD-Rechnung.
 
 Ob ein Feature die Strömung relevant ändert (Label), steht in den
-Datensätzen `dataset_f1.parquet` bzw. `dataset_f2.parquet` aus der CFD-Rechnung (Spalten `dQ_rel`,
-`relevant_tau010`), nicht in diesem Paket.
+Datensätzen `dataset_*.parquet` aus der CFD-Rechnung, nicht in diesem
+Paket: Druckverlust (`dQ_rel`, `relevant_tau010`) und Wärmeübergang
+(`dNu_rel`, `relevant_th_tau010`).
 
 Weitere Familien (Port, Steg-Flowfield, 3D-Ausschnitt) und Realfälle
 folgen.
@@ -132,10 +148,10 @@ def f2_plate(p: f2_manifold.F2Params, feats: list[Feature]) -> trimesh.Trimesh:
 
 
 FAMILIES = {
-    "F1": {"design": "f1", "folder": "F1_Flowfield-Kanal", "bauteil": "Flowfield-Kanal (Bipolarplatte)",
+    "F1": {"designs": ("f1", "f1x"), "folder": "F1_Flowfield-Kanal", "bauteil": "Flowfield-Kanal (Bipolarplatte)",
            "params": f1_channel.F1Params, "platte": f1_plate, "fluid": f1_fluid,
            "width_mm": lambda p: f1_dims(p)["w_ch"] * MM},
-    "F2": {"design": "f2", "folder": "F2_Verteiler", "bauteil": "Verteiler (Manifold) mit Kanalabgängen",
+    "F2": {"designs": ("f2", "f2x"), "folder": "F2_Verteiler", "bauteil": "Verteiler (Manifold) mit Kanalabgängen",
            "params": f2_manifold.F2Params, "platte": f2_plate, "fluid": f2_fluid,
            "width_mm": lambda p: f2_dims(p)["depth"] * MM},
 }
@@ -157,7 +173,9 @@ def export(families: list[str], out: Path, designs: dict | None = None) -> pd.Da
         folder = out / fam["folder"]
         for sub in ("platte", "fluid"):
             (folder / sub).mkdir(parents=True, exist_ok=True)
-        for mid, spec, feats in models((designs or {}).get(fam_id, fam["design"])):
+        todo = (designs or {}).get(fam_id, fam["designs"])
+        for mid, spec, feats in (m for d in ([todo] if isinstance(todo, str) else todo)
+                                 for m in models(d)):
             p = fam["params"](**spec["params"])
             for sub in ("platte", "fluid"):
                 m = fam[sub](p, feats)

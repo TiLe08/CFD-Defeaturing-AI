@@ -90,9 +90,26 @@ def design_ap2() -> list[dict]:
 # - Re 20-500: steady laminar channel flow.
 F1_RANGES = {"Re": (20.0, 500.0), "h_over_H": (0.05, 0.5), "w_over_H": (0.1, 2.0)}
 F1_SEED = 2026
+# Feature types added on 16.11.2026 (option A: more feature types instead of
+# more families), computed as separate designs f1x / f2x so that f1 / f2 stay
+# unchanged. Smallest width per type: every element of the cross-section must
+# span at least two cells of the refinement box (H/40), as for h >= 0.05 H.
+NEW_KINDS = ("engraving", "round_groove", "chamfer_rib", "bump", "wedge")
+KIND_W_MIN = {"engraving": 0.5}  # three slots of w/5: w/5 >= 0.1 H
 
 
-def design_f1_lhs(n_base: int = 30, k: int = 8, seed: int = F1_SEED) -> list[dict]:
+def _kinds(rng, kinds, k):
+    """k feature types, as evenly as possible, in random order."""
+    return rng.permutation((list(kinds) * (k // len(kinds) + 1))[:k])
+
+
+def _width(u, kind, lo, hi):
+    lo = max(lo, KIND_W_MIN.get(kind, lo))
+    return lo + u * (hi - lo)
+
+
+def design_f1_lhs(n_base: int = 30, k: int = 8, seed: int = F1_SEED,
+                  kinds=("groove", "rib"), prefix: str = "f1") -> list[dict]:
     """F1 data set: Latin hypercube over base configurations and features.
 
     Per base configuration: one run without feature (label reference), one
@@ -112,19 +129,19 @@ def design_f1_lhs(n_base: int = 30, k: int = 8, seed: int = F1_SEED) -> list[dic
     gci_bases = {int(np.argmin(re_vals)), int(np.argmax(re_vals))}
     specs = []
     for b, Re in enumerate(re_vals):
-        base = f"f1_b{b:03d}"
+        base = f"{prefix}_b{b:03d}"
         flow = {"U": float(Re * nu / H), "nu": nu, "Re": float(Re)}
         specs.append(_spec(f"{base}_without", base, "without", params, [], flow, F1_MESH_FINE))
         specs.append(_spec(f"{base}_base_coarse", base, "base_coarse", params, [], flow,
                            F1_MESH_COARSE))
-        kinds = rng.permutation(["groove", "rib"] * (k // 2) + ["groove"] * (k % 2))
+        kind_list = _kinds(rng, kinds, k)
         feat_pts = qmc.LatinHypercube(d=3, seed=seed + 1000 + b).random(k)
         feats = []
         for j, (u_h, u_w, u_s) in enumerate(feat_pts):
             h = 10 ** (np.log10(h_lo) + u_h * (np.log10(h_hi) - np.log10(h_lo)))
-            w = w_lo + u_w * (w_hi - w_lo)
+            w = _width(u_w, str(kind_list[j]), w_lo, w_hi)
             s = p.s_slot + (u_s - 0.5) * (p.slot_w_max - w) * H
-            f = {"kind": str(kinds[j]), "s": float(s), "w": float(w * H), "h": float(h * H)}
+            f = {"kind": str(kind_list[j]), "s": float(s), "w": float(w * H), "h": float(h * H)}
             feats.append(f)
             specs.append(_spec(f"{base}_with_f{j}", base, "with", params, [f], flow,
                                F1_MESH_FINE))
@@ -222,7 +239,8 @@ F2_RANGES = {"Re": (20.0, 500.0), "b_over_H": (0.3, 1.0), "pitch_over_H": (1.5, 
 F2_SEED = 2027
 
 
-def design_f2_lhs(n_base: int = 20, k: int = 8, seed: int = F2_SEED) -> list[dict]:
+def design_f2_lhs(n_base: int = 20, k: int = 8, seed: int = F2_SEED,
+                  kinds=("groove", "rib"), prefix: str = "f2") -> list[dict]:
     """F2 data set: Latin hypercube over manifold configurations and features.
 
     Per base: Re, branch width b, branch pitch and the branch above the
@@ -258,19 +276,20 @@ def design_f2_lhs(n_base: int = 20, k: int = 8, seed: int = F2_SEED) -> list[dic
                      slot_branch=int(min(n_br - 1, u_slot * n_br)))
         params, H, Re = asdict(p), p.H, float(re_vals[bi])
         flow = {"U": Re * nu / H, "nu": nu, "Re": Re}
-        base = f"f2_b{bi:03d}"
+        base = f"{prefix}_b{bi:03d}"
 
         def spec(cid, role, feats, mesh):
             return _spec(f"{base}_{cid}", base, role, params, feats, flow, mesh, family="F2")
 
         specs += [spec("without", "without", [], F1_MESH_FINE),
                   spec("base_coarse", "base_coarse", [], F1_MESH_COARSE)]
-        kinds = rng.permutation(["groove", "rib"] * (k // 2) + ["groove"] * (k % 2))
+        kind_list = _kinds(rng, kinds, k)
         feats = []
         for j, (u_h, u_w, u_s) in enumerate(qmc.LatinHypercube(d=3, seed=seed + 1000 + bi).random(k)):
-            h, w = log(u_h, "h_over_H"), lin(u_w, "w_over_H")
+            h = log(u_h, "h_over_H")
+            w = _width(u_w, str(kind_list[j]), *R["w_over_H"])
             s = p.s_slot + (u_s - 0.5) * (p.slot_w_max - w) * H
-            f = {"kind": str(kinds[j]), "s": float(s), "w": float(w * H), "h": float(h * H)}
+            f = {"kind": str(kind_list[j]), "s": float(s), "w": float(w * H), "h": float(h * H)}
             feats.append(f)
             specs.append(spec(f"with_f{j}", "with", [f], F1_MESH_FINE))
         if bi in gci_bases:
@@ -281,8 +300,18 @@ def design_f2_lhs(n_base: int = 20, k: int = 8, seed: int = F2_SEED) -> list[dic
     return specs
 
 
+def design_f1x() -> list[dict]:
+    """F1 with the new feature types: 15 bases x 10 features (2 per type)."""
+    return design_f1_lhs(n_base=15, k=10, seed=2028, kinds=NEW_KINDS, prefix="f1x")
+
+
+def design_f2x() -> list[dict]:
+    """F2 with the new feature types: 15 bases x 10 features (2 per type)."""
+    return design_f2_lhs(n_base=15, k=10, seed=2029, kinds=NEW_KINDS, prefix="f2x")
+
+
 DESIGNS = {"ap2": design_ap2, "f1": design_f1_lhs, "f2": design_f2_lhs, "f2_trial": design_f2_trial,
-           "a1_trial": design_a1_trial}
+           "a1_trial": design_a1_trial, "f1x": design_f1x, "f2x": design_f2x}
 
 
 def plan(specs: list[dict], out: Path) -> pd.DataFrame:

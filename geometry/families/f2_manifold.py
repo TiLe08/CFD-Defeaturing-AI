@@ -62,21 +62,16 @@ class F2Params:
 
 
 def _check(p: F2Params, f: Feature) -> None:
-    if f.kind == "rib" and f.h >= p.H:
+    if f.category == "convex" and f.h >= p.H:
         raise ValueError("rib would block the header")
     if f.s - f.w / 2 <= 0 or f.s + f.w / 2 >= p.L:
         raise ValueError("feature outside the header")
 
 
-def floor_line(p: F2Params, features: list[Feature]) -> LineString:
-    """The floor (bottomWall) as a polyline, feature included."""
-    pts = [(0.0, 0.0)]
-    for f in sorted(features, key=lambda f: f.s):
-        y = -f.h if f.kind == "groove" else f.h
-        x0, x1 = f.s - f.w / 2, f.s + f.w / 2
-        pts += [(x0, 0.0), (x0, y), (x1, y), (x1, 0.0)]
-    pts.append((p.L, 0.0))
-    return LineString(pts)
+def floor_line(p: F2Params, features: list[Feature]):
+    """The floor (bottomWall): the line y = 0 plus the outlines of the features."""
+    return unary_union([LineString([(0.0, 0.0), (p.L, 0.0)]),
+                        *[f.section().boundary for f in features]])
 
 
 def make_polygon(p: F2Params, features: list[Feature]) -> Geometry2D:
@@ -89,9 +84,7 @@ def make_polygon(p: F2Params, features: list[Feature]) -> Geometry2D:
     grooves, ribs = [], []
     for f in features:
         _check(p, f)
-        rect = box(f.s - f.w / 2, -f.h if f.kind == "groove" else 0.0,
-                   f.s + f.w / 2, 0.0 if f.kind == "groove" else f.h)
-        (grooves if f.kind == "groove" else ribs).append(rect)
+        (grooves if f.category == "concave" else ribs).append(f.section())
     if grooves:
         fluid = unary_union([fluid, *grooves])
     if ribs:

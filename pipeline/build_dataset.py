@@ -26,6 +26,7 @@ from descriptors.geometric import geometric_descriptors  # noqa: E402
 from geometry.features import Feature  # noqa: E402
 
 TAUS = (0.005, 0.01, 0.02)
+TH_RES_MAX = 1e-5  # final residual of T (see cfd.run_case.THERMAL_DEFAULTS)
 
 
 def load_cases(raw: Path) -> dict[str, dict]:
@@ -131,7 +132,11 @@ def build(raw: Path) -> pd.DataFrame:
                     row.update(Nu_with=rw["Nu"], Nu_without=r0["Nu"], dNu_rel=dnu)
                     for tau in TAUS:
                         row[f"relevant_th_tau{tau * 1000:03.0f}"] = bool(abs(dnu) > tau)
-                    if not (rw.get("th_converged") and r0.get("th_converged")):
+                    # judged here from the final residual, so that the limit
+                    # can change without rerunning the cases
+                    res_ok = [r.get("th_final_residual") is not None
+                              and r["th_final_residual"] < TH_RES_MAX for r in (rw, r0)]
+                    if not all(res_ok):
                         row["excluded_th"] = "thermal not converged"
             row["excluded"] = reason
             rows.append(row)

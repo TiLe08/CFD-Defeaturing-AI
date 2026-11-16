@@ -40,7 +40,10 @@ STEPS = ("blockMesh", "surfaceFeatureExtract", "snappyHexMesh", "extrudeMesh",
 # Heat transfer as a passive scalar on the frozen flow field (single phase,
 # constant properties, no conjugate heat transfer). Pr of water at about
 # 60 to 80 degC, the operating range of PEM/AEM electrolyzers.
-THERMAL_DEFAULTS = {"Pr": 3.0, "max_iter": 60, "res_T": 1e-8}
+# scalarTransportFoam (v1912) ignores residualControl and always runs
+# max_iter. Checked on the slowest F2 cases: after 60 iterations Nu changes
+# by < 1e-7 relative even where the residual stalls near 1e-4 (limiter).
+THERMAL_DEFAULTS = {"Pr": 3.0, "max_iter": 150, "res_T": 1e-5}
 # Refinement history from snappyHexMesh, invalid after extrudeMesh.
 STALE_MESH_FILES = ("cellLevel", "pointLevel", "level0Edge", "surfaceIndex")
 

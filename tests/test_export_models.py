@@ -23,7 +23,7 @@ def test_plate_volume_changes_by_feature(kind, sign):
 def test_export_writes_watertight_models_and_table(tmp_path, monkeypatch):
     few = list(em.models("ap2"))[:3]
     monkeypatch.setattr(em, "models", lambda design: iter(few))
-    df = em.export(["F1"], tmp_path)
+    df = em.export(["F1"], tmp_path, designs={"F1": "ap2"})
     assert len(df) == 3 and (tmp_path / "LIESMICH.md").exists()
     for rel in pd.concat([df.stl_platte, df.stl_fluid]):
         m = trimesh.load(tmp_path / rel)
