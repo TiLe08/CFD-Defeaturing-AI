@@ -80,3 +80,27 @@ def test_f1_design_respects_ranges_and_balance():
     assert kinds.count("rib") == kinds.count("groove")
     re = [s["flow"]["Re"] for s in specs if s["role"] == "without"]
     assert min(re) >= 20 and max(re) <= 500
+
+
+def test_thermal_template_renders_with_pr_from_spec():
+    spec = _spec()
+    vals = rc.placeholders(spec)
+    assert vals["DT"] == pytest.approx(spec["flow"]["nu"] / rc.THERMAL_DEFAULTS["Pr"])
+    tmpl = rc.TEMPLATES / spec["template"] / "thermal"
+    for f in tmpl.rglob("*"):
+        if f.is_file():
+            assert "{{" not in rc.render(f.read_text(), vals), f
+    spec["thermal"] = {"Pr": 7.0}
+    assert rc.placeholders(spec)["DT"] == pytest.approx(spec["flow"]["nu"] / 7.0)
+
+
+def test_solved_case_without_thermal_step_needs_run(tmp_path):
+    spec = _spec()
+    (tmp_path / "spec.json").write_text(json.dumps(spec))
+    old = [s for s in rc.STEPS if s != "scalarTransport"]
+    rc.save_status(tmp_path, {"state": "solved", "done": old, "error": None, "times": {}})
+    assert rc.needs_run(tmp_path)
+    rc.save_status(tmp_path, {"state": "solved", "done": list(rc.STEPS), "error": None, "times": {}})
+    assert not rc.needs_run(tmp_path)
+    rc.save_status(tmp_path, {"state": "failed", "done": [], "error": "x", "times": {}})
+    assert not rc.needs_run(tmp_path)

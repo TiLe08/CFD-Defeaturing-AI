@@ -1,0 +1,24 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      controlDict;
+}
+// T is linear in a frozen flow field: a few steady iterations solve it.
+application     scalarTransportFoam;
+startFrom       startTime;
+startTime       0;
+stopAt          endTime;
+endTime         {{T_ITER}};
+deltaT          1;
+writeControl    timeStep;
+writeInterval   {{T_ITER}};
+purgeWrite      1;
+writeFormat     ascii;
+writePrecision  10;
+writeCompression off;
+timeFormat      general;
+timePrecision   8;
+runTimeModifiable false;

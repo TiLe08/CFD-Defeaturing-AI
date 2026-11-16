@@ -1,4 +1,4 @@
-# F2-Probelauf in Claudes Sandbox (OpenFOAM v1912, 12.11.2026)
+# A1-Probelauf (NACA-Profil, bis 16.11.2026 als F2 geführt) in Claudes Sandbox (OpenFOAM v1912, 12.11.2026)
 
 NACA2412, α = 4°, c = 0,1 m, Re = 3·10⁵ (U = 45 m/s, ν = 1,5·10⁻⁵ m²/s), k-ω SST mit Wandauflösung (y₁ aus Plattenreibung für y⁺ ≈ 1), Feature auf der Oberseite bei x/c = 0,5, Breite 0,05c. Feines Netz etwa 105 000 Zellen, 4000 Iterationen. v1912 ohne Function Objects: c_d aus den Endfeldern (`forces_from_fields`), Stabilität aus den Feldern der letzten 750 Iterationen (alle 250 Iterationen geschrieben).
 

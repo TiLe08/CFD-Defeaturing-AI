@@ -8,7 +8,7 @@ from __future__ import annotations
 from geometry.features import Feature
 
 GEO_COLUMNS = ["category", "h_over_L", "w_over_L", "h_over_w", "area_frac",
-               "orient_deg", "Re"]
+               "fill_factor", "n_elem", "orient_deg", "Re"]
 
 
 def geometric_descriptors(f: Feature, L_ref: float, wetted_length_base: float,
@@ -19,13 +19,19 @@ def geometric_descriptors(f: Feature, L_ref: float, wetted_length_base: float,
     i.e. area per unit depth) relative to the total wetted length of the base
     geometry. orient_deg is the angle between the feature's long axis and the
     local flow direction; in 2D every feature spans the width, so it is 90.
+    fill_factor (cross-section area / (w h)) and n_elem (separate parts of the
+    cross-section, e.g. 3 for an engraving) describe the shape without naming
+    the feature type, so the model never sees the type label either.
     """
+    sec = f.section()
     return {
         "category": f.category,
         "h_over_L": f.h / L_ref,
         "w_over_L": f.w / L_ref,
         "h_over_w": f.h / f.w,
         "area_frac": f.w / wetted_length_base,
+        "fill_factor": float(sec.area / (f.w * f.h)),
+        "n_elem": len(getattr(sec, "geoms", [sec])),
         "orient_deg": orient_deg,
         "Re": Re,
     }

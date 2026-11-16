@@ -41,6 +41,11 @@ class F1Params:
         """Centre of the feature slot on the bottom wall [m]."""
         return (self.L_up + 0.5 * self.slot_w_max) * self.H
 
+    @property
+    def y_top(self) -> float:
+        """Highest point of the fluid domain [m]."""
+        return self.H
+
     def to_dict(self) -> dict:
         d = asdict(self)
         d.update(L=self.L, s_slot=self.s_slot)
@@ -59,7 +64,7 @@ class Geometry2D:
 
 
 def _check_feature(p: F1Params, f: Feature) -> None:
-    if f.kind == "rib" and f.h >= p.H:
+    if f.category == "convex" and f.h >= p.H:
         raise ValueError("rib would block the channel")
     if f.s - f.w / 2 <= 0 or f.s + f.w / 2 >= p.L:
         raise ValueError("feature outside the channel")
@@ -71,9 +76,7 @@ def make_polygon(p: F1Params, features: list[Feature]) -> Geometry2D:
     grooves, ribs = [], []
     for f in features:
         _check_feature(p, f)
-        rect = box(f.s - f.w / 2, -f.h if f.kind == "groove" else 0.0,
-                   f.s + f.w / 2, 0.0 if f.kind == "groove" else f.h)
-        (grooves if f.kind == "groove" else ribs).append(rect)
+        (grooves if f.category == "concave" else ribs).append(f.section())
     if grooves:
         fluid = unary_union([fluid, *grooves])
     if ribs:

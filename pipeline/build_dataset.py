@@ -26,6 +26,7 @@ from descriptors.geometric import geometric_descriptors  # noqa: E402
 from geometry.features import Feature  # noqa: E402
 
 TAUS = (0.005, 0.01, 0.02)
+TH_RES_MAX = 1e-5  # final residual of T (see cfd.run_case.THERMAL_DEFAULTS)
 
 
 def load_cases(raw: Path) -> dict[str, dict]:
@@ -53,7 +54,7 @@ def exclusion_reason(c: dict | None) -> str | None:
 
 
 def _q(r: dict) -> float:
-    """Target quantity: Q (F2: c_d), F1 results store it as dp."""
+    """Target quantity: Q (A1: c_d), F1 results store it as dp."""
     return float(r["Q"] if "Q" in r else r["dp"])
 
 
@@ -63,18 +64,18 @@ def _rel_sigma(r: dict) -> float:
 
 
 def reference_length(spec: dict) -> float:
-    return spec["params"]["c"] if spec["family"] == "F2" else spec["params"]["H"]
+    return spec["params"]["c"] if spec["family"] == "A1" else spec["params"]["H"]
 
 
 def wall_tables(case_dir: Path, spec: dict, f: Feature):
     """Wall carrying the feature, all walls, and the cap for delta_99.
 
     F1: bottom and top wall of the channel, delta capped at half the height.
-    F2: upper and lower side of the profile; the stagnation region
+    A1: upper and lower side of the profile; the stagnation region
     (x < 0.02 c) is left out of the feature wall so that the stagnation point
     is not taken for separation. delta capped at 0.1 c.
     """
-    if spec["family"] == "F2":
+    if spec["family"] == "A1":
         c = spec["params"]["c"]
         df = pd.read_csv(case_dir / "wall_profile.csv")
         sides = {s: df[df.side == s] for s in ("upper", "lower")}
@@ -125,6 +126,18 @@ def build(raw: Path) -> pd.DataFrame:
                            runtime_without_s=r0["runtime_clock_s"])
                 for tau in TAUS:
                     row[f"relevant_tau{tau * 1000:03.0f}"] = bool(abs(dq) > tau)
+                # second, separate label: heat transfer (Nusselt number)
+                if "Nu" in rw and "Nu" in r0:
+                    dnu = (rw["Nu"] - r0["Nu"]) / r0["Nu"]
+                    row.update(Nu_with=rw["Nu"], Nu_without=r0["Nu"], dNu_rel=dnu)
+                    for tau in TAUS:
+                        row[f"relevant_th_tau{tau * 1000:03.0f}"] = bool(abs(dnu) > tau)
+                    # judged here from the final residual, so that the limit
+                    # can change without rerunning the cases
+                    res_ok = [r.get("th_final_residual") is not None
+                              and r["th_final_residual"] < TH_RES_MAX for r in (rw, r0)]
+                    if not all(res_ok):
+                        row["excluded_th"] = "thermal not converged"
             row["excluded"] = reason
             rows.append(row)
     return pd.DataFrame(rows)

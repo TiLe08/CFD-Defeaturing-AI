@@ -23,7 +23,9 @@ from pipeline.build_dataset import TAUS, build  # noqa: E402
 
 # base_id of each design (data/raw may hold several designs side by side)
 BASE_PATTERNS = {"ap2": r"^f1_ap2_b\d{3}$", "f1": r"^f1_b\d{3}$",
-                 "f2_trial": r"^f2_trial_b\d{3}$"}
+                 "f2": r"^f2_b\d{3}$", "f2_trial": r"^f2_trial_b\d{3}$", "a1_trial": r"^a1_trial_b\d{3}$",
+                 "f1x": r"^f1x_b\d{3}$", "f2x": r"^f2x_b\d{3}$",
+                 "f1_alle": r"^f1x?_b\d{3}$", "f2_alle": r"^f2x?_b\d{3}$"}
 
 
 def report(raw: Path, design: str, out_parquet: Path) -> str:
@@ -50,9 +52,26 @@ def report(raw: Path, design: str, out_parquet: Path) -> str:
         lines.append(f"| {kind} | {len(g)} | " + " | ".join(cells) + " |")
     lines.append("")
 
+    if "dNu_rel" in ok:
+        okt = ok[ok.dNu_rel.notna() & ok.get("excluded_th", pd.Series(index=ok.index)).isna()]
+        lines += ["## Klassenbalance Wärmeübergang (Nusselt-Zahl)", "",
+                  f"{len(okt)} Features mit gültiger Temperaturrechnung.", "",
+                  "| Typ | n | " + " | ".join(f"τ = {t:.1%}".replace(".", ",") for t in TAUS) + " |",
+                  "| --- | --- | " + " | ".join("---" for _ in TAUS) + " |"]
+        for kind, g in [("alle", okt), *okt.groupby("kind")]:
+            cells = [f"{g[f'relevant_th_tau{t * 1000:03.0f}'].sum()} "
+                     f"({g[f'relevant_th_tau{t * 1000:03.0f}'].mean():.0%})" for t in TAUS]
+            lines.append(f"| {kind} | {len(g)} | " + " | ".join(cells) + " |")
+        both = okt.relevant_tau010 & okt.relevant_th_tau010
+        lines += ["", f"Bei τ = 1 %: {both.sum()} Features für beide relevant, "
+                  f"{(okt.relevant_tau010 & ~okt.relevant_th_tau010).sum()} nur für den Druck, "
+                  f"{(~okt.relevant_tau010 & okt.relevant_th_tau010).sum()} nur für die Wärme.", ""]
+
     lines += ["## Wertebereiche", "",
               "| Größe | Min | Median | Max |", "| --- | --- | --- | --- |"]
-    for col in ("Re", "h_over_L", "w_over_L", "h_plus", "h_over_delta", "dQ_rel"):
+    for col in ("Re", "h_over_L", "w_over_L", "h_plus", "h_over_delta", "dQ_rel", "dNu_rel"):
+        if col not in ok:
+            continue
         s = ok[col]
         lines.append(f"| {col} | {s.min():.3g} | {s.median():.3g} | {s.max():.3g} |")
     lines.append("")

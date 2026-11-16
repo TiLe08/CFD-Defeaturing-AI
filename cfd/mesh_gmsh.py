@@ -1,4 +1,4 @@
-"""2D meshes with gmsh for external profiles (F2), extruded to one cell in z.
+"""2D meshes with gmsh for external profiles (A1, NACA), extruded to one cell in z.
 
 snappyHexMesh refines isotropically, so the refinement needed at a profile
 wall (cells of a few hundredths of a millimetre) would also be applied in z
@@ -350,7 +350,7 @@ def mesh_profile(out_msh: Path, domain: Polygon, solid: Polygon, clean: Polygon,
     window: rotated rectangle whose two short sides cross the profile once
     each; every feature lies inside footprint, footprint inside window.
     sizes: far, wall, slot, y1, ratio, bl_thickness, slot_bl_thickness,
-    near_dist (see mesh_sizes in case_f2). cache_dir: where the outer mesh
+    near_dist (see mesh_sizes in case_a1). cache_dir: where the outer mesh
     is stored for reuse (None: always mesh anew, not reproducible).
     Patches: inlet, outlet, farfield, profile, front, back; cells: fluid.
     """

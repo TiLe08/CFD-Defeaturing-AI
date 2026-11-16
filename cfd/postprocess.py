@@ -172,10 +172,80 @@ def profile(case: Path, mesh: foamio.Mesh, x: float, d_bg: float) -> pd.DataFram
 
 
 # --------------------------------------------------------------------------
+# Heat transfer (passive scalar theta in case/thermal)
+# --------------------------------------------------------------------------
+
+def _patch_sum(mesh, phi_bf, patch) -> tuple[np.ndarray, np.ndarray]:
+    idx = mesh.patch_faces(patch)
+    phi = np.broadcast_to(phi_bf[patch][:, 0], (len(idx),))
+    return np.asarray(idx), phi
+
+
+def thermal_result(case: Path, mesh: foamio.Mesh, H: float, L_heat: float,
+                   Pr: float, nu: float, res_T: float = 1e-8) -> tuple[dict, pd.DataFrame]:
+    """Nusselt number of the heated wall (bottomWall, theta = 1, inlet theta = 0).
+
+    The heat rate comes from the energy balance of the discrete solution:
+    convected out at the outlet plus diffused back through the inlet. Both
+    other walls are adiabatic and the sides empty, so this equals the wall
+    heat flux exactly. Nu = q_mean H / (k dT) with q_mean over the projected
+    wall length L_heat; a feature that adds wall area raises Nu, as it would
+    in the part. The local wall gradient (cell-centre estimate) is returned
+    per face for the wall table and gives a check of the balance.
+    """
+    th = Path(case) / "thermal"
+    sol = parse_solver_log((th / "log.scalarTransportFoam").read_text())
+    t = latest_time(th)
+    T, _ = foamio.read_field(t / "T")
+    _, phi_bf = foamio.read_field(th / "0" / "phi")
+    DT = nu / Pr
+    dz = None
+    flux = {}
+    for patch in ("outlet", "inlet"):
+        idx, phi = _patch_sum(mesh, phi_bf, patch)
+        th_c = T[mesh.owner[idx], 0]
+        sf = mesh.face_areas(idx)
+        area = np.linalg.norm(sf, axis=1)
+        n = sf / area[:, None]
+        d = np.abs(((mesh.cell_centres[mesh.owner[idx]] - mesh.face_centres(idx)) * n).sum(axis=1))
+        if patch == "outlet":
+            flux["conv_out"] = float((phi * th_c).sum())
+            flux["phi_out"] = float(phi.sum())
+        else:  # theta_face = 0: diffusion out of the domain through the inlet
+            flux["diff_in"] = float((DT * th_c / d * area).sum())
+            dz = float(area.sum() / H)
+    Q = flux["conv_out"] + flux["diff_in"]  # [m^3/s], per depth dz, in theta units
+    idx = list(mesh.patch_faces("bottomWall"))
+    sf = mesh.face_areas(idx)
+    area = np.linalg.norm(sf, axis=1)
+    n = sf / area[:, None]
+    fc = mesh.face_centres(idx)
+    cc = mesh.cell_centres[mesh.owner[idx]]
+    d = np.abs(((cc - fc) * n).sum(axis=1))
+    grad = (1.0 - T[mesh.owner[idx], 0]) / d  # d theta / dn into the fluid
+    Q_wall_est = float(DT * (grad * area).sum())
+    wall = pd.DataFrame({"x": fc[:, 0], "y": fc[:, 1], "nu_local": grad * H, "area": area})
+    res = {
+        "Nu": Q / (DT * dz * L_heat) * H,
+        "theta_out_bulk": flux["conv_out"] / flux["phi_out"],
+        "th_inlet_diffusion_share": flux["diff_in"] / Q if Q else float("nan"),
+        "th_wall_estimate_dev": Q_wall_est / Q - 1 if Q else float("nan"),
+        # scalarTransportFoam ignores residualControl: judge the last residual
+        "th_converged": bool(sol["finished"] and sol["final_residuals"].get("T", 1.0) < res_T),
+        "th_iterations": sol["iterations"],
+        "th_final_residual": sol["final_residuals"].get("T"),
+        "th_runtime_clock_s": sol["runtime_clock_s"],
+        "Pr": Pr,
+    }
+    return res, wall.sort_values("x").reset_index(drop=True)
+
+
+# --------------------------------------------------------------------------
 # result.json
 # --------------------------------------------------------------------------
 
-def collect(case: Path, spec: dict, d_bg: float, slot_x: float) -> dict:
+def collect(case: Path, spec: dict, d_bg: float, slot_x: float,
+            thermal: dict | None = None) -> dict:
     """Assemble result.json for a solved case and export wall/profile CSVs."""
     case = Path(case)
     sol = parse_solver_log((case / "log.simpleFoam").read_text())
@@ -197,6 +267,10 @@ def collect(case: Path, spec: dict, d_bg: float, slot_x: float) -> dict:
         df, tau_source = wall_data(case, mesh, patch, nu)
         df.to_csv(case / f"wall_{patch}.csv", index=False)
     profile(case, mesh, slot_x, d_bg).to_csv(case / "profile_slot.csv", index=False)
+    th = {}
+    if thermal is not None and (case / "thermal" / "log.scalarTransportFoam").exists():
+        th, wall_th = thermal_result(case, mesh, **thermal, nu=nu)
+        wall_th.to_csv(case / "wall_bottomWall_thermal.csv", index=False)
     return {
         "case_id": spec["case_id"],
         "base_id": spec["base_id"],
@@ -209,6 +283,7 @@ def collect(case: Path, spec: dict, d_bg: float, slot_x: float) -> dict:
         "tau_source": tau_source,
         "converged": bool(sol["finished"] and (sol["residual_converged"] or stable)),
         "q_stable": stable,
+        **th,
         **sol,
         **msh,
     }

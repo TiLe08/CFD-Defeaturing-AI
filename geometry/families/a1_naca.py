@@ -1,4 +1,6 @@
-"""F2: NACA 4-digit profile with surface features (external, turbulent).
+"""A1: NACA 4-digit profile with surface features (external, turbulent).
+
+Application example outside the electrolyzer (until 2026-11-16 family F2).
 
 The profile is built in its body frame (leading edge at the origin, chord
 along +x), features are added there, and the result is rotated by the angle
@@ -21,7 +23,7 @@ from geometry.features import Feature
 
 
 @dataclass(frozen=True)
-class F2Params:
+class A1Params:
     c: float = 0.1  # chord [m]
     m: float = 0.02  # max camber / c
     p: float = 0.4  # position of max camber / c
@@ -85,13 +87,13 @@ def feature_rect(pt, tan, nrm, f: Feature) -> Polygon:
     return Polygon(corners)
 
 
-def profile_polygon(p: F2Params, features: list[Feature]) -> Polygon:
+def profile_polygon(p: A1Params, features: list[Feature]) -> Polygon:
     """Solid profile with features, rotated by the angle of attack."""
     upper, lower = naca4(p.m, p.p, p.t, p.c, p.n_side)
     solid = Polygon(np.vstack([upper, lower[::-1][1:-1]]))
     for f in features:
         if f.wall not in ("upper", "lower"):
-            raise ValueError("F2 features need wall='upper' or 'lower'")
+            raise ValueError("A1 features need wall='upper' or 'lower'")
         if not (0.05 * p.c < f.s - f.w / 2 and f.s + f.w / 2 < 0.95 * p.c):
             raise ValueError("feature too close to leading or trailing edge")
         pts, sign = (upper, 1.0) if f.wall == "upper" else (lower, -1.0)
@@ -103,11 +105,11 @@ def profile_polygon(p: F2Params, features: list[Feature]) -> Polygon:
     return Polygon(np.round(np.asarray(solid.exterior.coords), 12)).buffer(0)
 
 
-def domain_box(p: F2Params) -> Polygon:
+def domain_box(p: A1Params) -> Polygon:
     return box(-p.x_up * p.c, -p.y_half * p.c, p.x_down * p.c, p.y_half * p.c)
 
 
-def slot_box(p: F2Params, side: str = "upper") -> Polygon:
+def slot_box(p: A1Params, side: str = "upper") -> Polygon:
     """Region around the feature slot (rotated with the profile).
 
     It depends only on the base configuration, so runs with and without a
@@ -123,7 +125,7 @@ def slot_box(p: F2Params, side: str = "upper") -> Polygon:
     return affinity.rotate(poly, -p.alpha_deg, origin=(0.25 * p.c, 0.0))
 
 
-def feature_zone(p: F2Params, side: str = "upper", margin: float = 0.0) -> Polygon:
+def feature_zone(p: A1Params, side: str = "upper", margin: float = 0.0) -> Polygon:
     """Largest feature footprint at the slot plus a margin (rotated).
 
     Every feature of the design lies inside it (w <= slot_w_max,
@@ -139,7 +141,7 @@ def feature_zone(p: F2Params, side: str = "upper", margin: float = 0.0) -> Polyg
     return affinity.rotate(poly, -p.alpha_deg, origin=(0.25 * p.c, 0.0))
 
 
-def body_frame(xy: np.ndarray, p: F2Params) -> np.ndarray:
+def body_frame(xy: np.ndarray, p: A1Params) -> np.ndarray:
     """Undo the angle-of-attack rotation (for wall data in chordwise x)."""
     a = np.deg2rad(p.alpha_deg)
     o = np.array([0.25 * p.c, 0.0])
@@ -147,14 +149,14 @@ def body_frame(xy: np.ndarray, p: F2Params) -> np.ndarray:
     return (xy - o) @ r.T + o
 
 
-def wetted_length(p: F2Params, features: list[Feature]) -> float:
+def wetted_length(p: A1Params, features: list[Feature]) -> float:
     return profile_polygon(p, features).exterior.length
 
 
-def build(p: F2Params, features: list[Feature]):
+def build(p: A1Params, features: list[Feature]):
     solid = profile_polygon(p, features)
     meta = {
-        "family": "F2",
+        "family": "A1",
         "params": p.to_dict(),
         "features": [f.to_dict() for f in features],
         "wetted_length": solid.exterior.length,

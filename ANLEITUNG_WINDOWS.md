@@ -8,7 +8,7 @@ Was im Hintergrund passiert: OpenFOAM läuft nur unter Linux. Windows bringt daf
 
 1. Die ZIP-Datei `CFD-Start-Windows.zip` aus dem Projekt herunterladen. Alternativ auf https://github.com/TiLe08/CFD-Defeaturing-AI auf den grünen Knopf **Code** und dann **Download ZIP** klicken.
 2. Rechtsklick auf die ZIP-Datei, **Alle extrahieren…**, als Ziel z. B. `Dokumente` wählen.
-3. Den entpackten Ordner öffnen und darin den Ordner `windows`. Dort liegen die Dateien `1_WSL_installieren`, `2_Einrichten`, `3_AP2_rechnen`, `4_Defeaturing_Tool` und `5_F1_Datensatz_rechnen`.
+3. Den entpackten Ordner öffnen und darin den Ordner `windows`. Dort liegen die Dateien `1_WSL_installieren`, `2_Einrichten`, `3_AP2_rechnen`, `4_Defeaturing_Tool`, `5_F1_Datensatz_rechnen` und `6_F2_Datensatz_rechnen`.
 
 Falls Windows beim Doppelklick „Der Computer wurde durch Windows geschützt“ meldet: auf **Weitere Informationen** und dann **Trotzdem ausführen** klicken. Die Skripte sind kurz und stehen offen im Repo.
 
@@ -57,6 +57,16 @@ Das ist der volle Datensatz für die Kanal-Familie F1 (etwa 310 Rechnungen), aus
 3. Aus diesem Ordner die beiden Dateien `fuer_claude.txt` und `dataset_f1.parquet` an Claude schicken.
 
 Abbrechen geht jederzeit (Fenster schließen). Ein neuer Doppelklick rechnet nur, was noch fehlt.
+
+## Schritt 6: F2-Datensatz rechnen (ca. 10–20 Minuten)
+
+Das ist der Datensatz für den Verteiler F2 (etwa 210 Rechnungen), mit Druck und Temperatur.
+
+1. Doppelklick auf `6_F2_Datensatz_rechnen`.
+2. Das Fenster offen lassen, bis `FERTIG` erscheint. Danach öffnet sich ein Ordner `CFD-Ergebnisse\f2_<Datum>`.
+3. Aus diesem Ordner die beiden Dateien `fuer_claude.txt` und `dataset_f2.parquet` an Claude schicken.
+
+Hinweis: Wenn du Schritt 5 schon gerechnet hast, starte ihn nach einem Update einfach noch einmal. Dann wird nur die Temperatur nachgerechnet (wenige Minuten).
 
 ## Wenn etwas schiefgeht
 
