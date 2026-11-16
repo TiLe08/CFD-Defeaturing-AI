@@ -186,7 +186,103 @@ def design_a1_trial() -> list[dict]:
     return specs
 
 
-DESIGNS = {"ap2": design_ap2, "f1": design_f1_lhs, "a1_trial": design_a1_trial}
+def design_f2_trial(Re: float = 100.0) -> list[dict]:
+    """F2 feasibility check: manifold with four branches, one base configuration.
+
+    Same mesh settings and roles as AP2: reference without feature, grooves
+    and ribs of three heights below the second branch, a null test with the
+    refinement box shifted by half a cell, and the coarse base run.
+    """
+    from dataclasses import asdict
+
+    from geometry.families.f2_manifold import F2Params
+
+    p = F2Params()
+    params = asdict(p)
+    H, nu = p.H, 1e-6
+    flow = {"U": Re * nu / H, "nu": nu, "Re": Re}
+    base = "f2_trial_b000"
+
+    def spec(cid, role, feats, mesh):
+        return _spec(f"{base}_{cid}", base, role, params, feats, flow, mesh, family="F2")
+
+    specs = [spec("without", "without", [], F1_MESH_FINE)]
+    for kind in ("groove", "rib"):
+        for h in (0.1, 0.25, 0.5):
+            f = {"kind": kind, "s": p.s_slot, "w": 0.5 * H, "h": h * H}
+            specs.append(spec(f"with_{kind}_h{h:g}", "with", [f], F1_MESH_FINE))
+    specs.append(spec("null_shift", "null_shift", [], dict(F1_MESH_FINE, box_shift=0.5)))
+    specs.append(spec("base_coarse", "base_coarse", [], F1_MESH_COARSE))
+    return specs
+
+
+# F2 data set: manifold geometry and Re vary per base, features as in F1.
+F2_RANGES = {"Re": (20.0, 500.0), "b_over_H": (0.3, 1.0), "pitch_over_H": (1.5, 3.0),
+             "h_over_H": (0.05, 0.5), "w_over_H": (0.1, 2.0)}
+F2_SEED = 2027
+
+
+def design_f2_lhs(n_base: int = 20, k: int = 8, seed: int = F2_SEED) -> list[dict]:
+    """F2 data set: Latin hypercube over manifold configurations and features.
+
+    Per base: Re, branch width b, branch pitch and the branch above the
+    feature slot (first to last) vary; one run without feature, one coarse
+    base run and k runs with one feature each (half grooves, half ribs).
+    The lowest- and highest-Re bases also get the GCI study.
+    """
+    from dataclasses import asdict
+
+    from scipy.stats import qmc
+
+    from geometry.families.f2_manifold import F2Params
+
+    R = F2_RANGES
+    nu = 1e-6
+    rng = np.random.default_rng(seed)
+    pts = qmc.LatinHypercube(d=4, seed=seed).random(n_base)
+
+    def lin(u, key):
+        lo, hi = R[key]
+        return lo + u * (hi - lo)
+
+    def log(u, key):
+        lo, hi = np.log10(R[key][0]), np.log10(R[key][1])
+        return 10 ** (lo + u * (hi - lo))
+
+    re_vals = log(pts[:, 0], "Re")
+    gci_bases = {int(np.argmin(re_vals)), int(np.argmax(re_vals))}
+    specs = []
+    for bi, (u_re, u_b, u_p, u_slot) in enumerate(pts):
+        n_br = F2Params().n_branch
+        p = F2Params(b=float(lin(u_b, "b_over_H")), pitch=float(lin(u_p, "pitch_over_H")),
+                     slot_branch=int(min(n_br - 1, u_slot * n_br)))
+        params, H, Re = asdict(p), p.H, float(re_vals[bi])
+        flow = {"U": Re * nu / H, "nu": nu, "Re": Re}
+        base = f"f2_b{bi:03d}"
+
+        def spec(cid, role, feats, mesh):
+            return _spec(f"{base}_{cid}", base, role, params, feats, flow, mesh, family="F2")
+
+        specs += [spec("without", "without", [], F1_MESH_FINE),
+                  spec("base_coarse", "base_coarse", [], F1_MESH_COARSE)]
+        kinds = rng.permutation(["groove", "rib"] * (k // 2) + ["groove"] * (k % 2))
+        feats = []
+        for j, (u_h, u_w, u_s) in enumerate(qmc.LatinHypercube(d=3, seed=seed + 1000 + bi).random(k)):
+            h, w = log(u_h, "h_over_H"), lin(u_w, "w_over_H")
+            s = p.s_slot + (u_s - 0.5) * (p.slot_w_max - w) * H
+            f = {"kind": str(kinds[j]), "s": float(s), "w": float(w * H), "h": float(h * H)}
+            feats.append(f)
+            specs.append(spec(f"with_f{j}", "with", [f], F1_MESH_FINE))
+        if bi in gci_bases:
+            for n in (7, 14):
+                m = dict(F1_MESH_FINE, n_per_H=n)
+                specs += [spec(f"gci_without_n{n}", "gci_without", [], m),
+                          spec(f"gci_with_n{n}", "gci_with", [feats[0]], m)]
+    return specs
+
+
+DESIGNS = {"ap2": design_ap2, "f1": design_f1_lhs, "f2": design_f2_lhs, "f2_trial": design_f2_trial,
+           "a1_trial": design_a1_trial}
 
 
 def plan(specs: list[dict], out: Path) -> pd.DataFrame:

@@ -23,7 +23,7 @@ from pipeline.build_dataset import TAUS, build  # noqa: E402
 
 # base_id of each design (data/raw may hold several designs side by side)
 BASE_PATTERNS = {"ap2": r"^f1_ap2_b\d{3}$", "f1": r"^f1_b\d{3}$",
-                 "a1_trial": r"^a1_trial_b\d{3}$"}
+                 "f2": r"^f2_b\d{3}$", "f2_trial": r"^f2_trial_b\d{3}$", "a1_trial": r"^a1_trial_b\d{3}$"}
 
 
 def report(raw: Path, design: str, out_parquet: Path) -> str:

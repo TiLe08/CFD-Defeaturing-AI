@@ -14,7 +14,7 @@ source "$ENV_FILE"
 cd "$REPO_DIR"
 git pull --ff-only -q || echo "(Hinweis: Code konnte nicht aktualisiert werden, rechne mit dem vorhandenen Stand)"
 .venv/bin/pip install -q -r env/requirements.txt
-case "$DESIGN" in f2*)
+case "$DESIGN" in a1*)
     # gmsh braucht ein paar Grafik-Bibliotheken (einmalig, fragt das Ubuntu-Passwort ab)
     if ! ldconfig -p | grep -q libGLU.so.1; then
         echo "=== Einmalig: Zusatzpakete für gmsh installieren"

@@ -1,4 +1,4 @@
-"""Build, mesh, solve and post-process one F1 case.
+"""Build, mesh, solve and post-process one case (F1, F2 and A1).
 
 Usage:
     python -m cfd.run_case data/raw/<case_id>            # case dir with spec.json
@@ -27,7 +27,12 @@ if str(ROOT) not in sys.path:
 
 from cfd import case_a1, postprocess  # noqa: E402
 from geometry.features import Feature  # noqa: E402
-from geometry.families import f1_channel  # noqa: E402
+from geometry.families import f1_channel, f2_manifold  # noqa: E402
+
+# 2D families meshed with blockMesh + snappyHexMesh + extrudeMesh (template
+# f1_channel): geometry module and parameter class.
+SNAPPY_FAMILIES = {"F1": (f1_channel, f1_channel.F1Params),
+                   "F2": (f2_manifold, f2_manifold.F2Params)}
 
 TEMPLATES = ROOT / "cfd" / "templates"
 STEPS = ("blockMesh", "surfaceFeatureExtract", "snappyHexMesh", "extrudeMesh",
@@ -47,7 +52,7 @@ def mesh_layout(spec: dict) -> dict:
     configuration (slot size), never on the active feature. Runs with and
     without feature therefore share the same mesh outside the feature.
     """
-    p = f1_channel.F1Params(**spec["params"])
+    p = family_params(spec)
     m = spec["mesh"]
     H = p.H
     d = H / m["n_per_H"]  # background cell size
@@ -56,7 +61,7 @@ def mesh_layout(spec: dict) -> dict:
     nx = math.ceil((p.L - x0 + 2 * d) / d)
     y_low = p.slot_h_max * H
     y0 = -(math.ceil(y_low / d) + 2 + off) * d
-    ny = math.ceil((H - y0 + 2 * d) / d)
+    ny = math.ceil((p.y_top - y0 + 2 * d) / d)
     z0, z1 = 0.0, d
     bw = (0.5 * p.slot_w_max + 0.5) * H
     bh = (p.slot_h_max + 0.25) * H
@@ -77,6 +82,11 @@ def mesh_layout(spec: dict) -> dict:
         "FLIP_NORMALS": "true" if m.get("flip_normals", True) else "false",
         "_d": d, "_stl_z": (z0 - d, z1 + d), "_slot_x": p.s_slot,
     }
+
+
+def family_params(spec: dict):
+    """Parameter object of a snappy family (F1, F2)."""
+    return SNAPPY_FAMILIES[spec.get("family", "F1")][1](**spec["params"])
 
 
 def is_a1(spec: dict) -> bool:
@@ -125,10 +135,11 @@ def build_case(case: Path, spec: dict) -> None:
     if is_a1(spec):
         case_a1.build_geometry(case, spec)
         return
-    p = f1_channel.F1Params(**spec["params"])
+    module = SNAPPY_FAMILIES[spec.get("family", "F1")][0]
+    p = family_params(spec)
     feats = [Feature.from_dict(f) for f in spec["features"]]
     z0, z1 = mesh_layout(spec)["_stl_z"]
-    _, regions, meta = f1_channel.build(p, feats, z0, z1)
+    _, regions, meta = module.build(p, feats, z0, z1)
     tri = case / "constant" / "triSurface"
     tri.mkdir(parents=True, exist_ok=True)
     (tri / "channel.stl").write_text(f1_channel.to_multisolid_stl(regions))

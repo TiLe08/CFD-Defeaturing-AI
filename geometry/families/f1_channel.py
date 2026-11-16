@@ -41,6 +41,11 @@ class F1Params:
         """Centre of the feature slot on the bottom wall [m]."""
         return (self.L_up + 0.5 * self.slot_w_max) * self.H
 
+    @property
+    def y_top(self) -> float:
+        """Highest point of the fluid domain [m]."""
+        return self.H
+
     def to_dict(self) -> dict:
         d = asdict(self)
         d.update(L=self.L, s_slot=self.s_slot)
