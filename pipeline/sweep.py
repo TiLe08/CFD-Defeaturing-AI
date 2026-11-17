@@ -311,7 +311,10 @@ def design_f2x() -> list[dict]:
 
 
 DESIGNS = {"ap2": design_ap2, "f1": design_f1_lhs, "f2": design_f2_lhs, "f2_trial": design_f2_trial,
-           "a1_trial": design_a1_trial, "f1x": design_f1x, "f2x": design_f2x}
+           "a1_trial": design_a1_trial, "f1x": design_f1x, "f2x": design_f2x,
+           # everything of one family in one run (used by the Windows scripts)
+           "f1_alle": lambda: design_f1_lhs() + design_f1x(),
+           "f2_alle": lambda: design_f2_lhs() + design_f2x()}
 
 
 def plan(specs: list[dict], out: Path) -> pd.DataFrame:

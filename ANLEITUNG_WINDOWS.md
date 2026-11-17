@@ -48,23 +48,23 @@ Schritt 3 kannst du jederzeit wiederholen. Er holt sich automatisch den neuesten
 
 Mehr dazu, auch zu den Grenzen: `docs/defeaturing_tool.md`.
 
-## Schritt 5: F1-Datensatz rechnen (ca. 10–20 Minuten)
+## Schritt 5: F1-Datensatz rechnen (ca. 20–40 Minuten)
 
-Das ist der volle Datensatz für die Kanal-Familie F1 (etwa 310 Rechnungen), aus dem später das Modell lernt.
+Das ist der volle Datensatz für die Kanal-Familie F1 (etwa 500 Rechnungen mit allen sieben Feature-Typen, Druck und Temperatur), aus dem später das Modell lernt.
 
 1. Doppelklick auf `5_F1_Datensatz_rechnen`.
-2. Das Fenster offen lassen, bis `FERTIG` erscheint. Danach öffnet sich ein Ordner `CFD-Ergebnisse\f1_<Datum>`.
-3. Aus diesem Ordner die beiden Dateien `fuer_claude.txt` und `dataset_f1.parquet` an Claude schicken.
+2. Das Fenster offen lassen, bis `FERTIG` erscheint. Danach öffnet sich ein Ordner `CFD-Ergebnisse\f1_alle_<Datum>`.
+3. Aus diesem Ordner die beiden Dateien `fuer_claude.txt` und `dataset_f1_alle.parquet` an Claude schicken.
 
 Abbrechen geht jederzeit (Fenster schließen). Ein neuer Doppelklick rechnet nur, was noch fehlt.
 
-## Schritt 6: F2-Datensatz rechnen (ca. 10–20 Minuten)
+## Schritt 6: F2-Datensatz rechnen (ca. 20–40 Minuten)
 
-Das ist der Datensatz für den Verteiler F2 (etwa 210 Rechnungen), mit Druck und Temperatur.
+Das ist der Datensatz für den Verteiler F2 (etwa 400 Rechnungen mit allen sieben Feature-Typen), mit Druck und Temperatur.
 
 1. Doppelklick auf `6_F2_Datensatz_rechnen`.
-2. Das Fenster offen lassen, bis `FERTIG` erscheint. Danach öffnet sich ein Ordner `CFD-Ergebnisse\f2_<Datum>`.
-3. Aus diesem Ordner die beiden Dateien `fuer_claude.txt` und `dataset_f2.parquet` an Claude schicken.
+2. Das Fenster offen lassen, bis `FERTIG` erscheint. Danach öffnet sich ein Ordner `CFD-Ergebnisse\f2_alle_<Datum>`.
+3. Aus diesem Ordner die beiden Dateien `fuer_claude.txt` und `dataset_f2_alle.parquet` an Claude schicken.
 
 Hinweis: Wenn du Schritt 5 schon gerechnet hast, starte ihn nach einem Update einfach noch einmal. Dann wird nur die Temperatur nachgerechnet (wenige Minuten).
 
