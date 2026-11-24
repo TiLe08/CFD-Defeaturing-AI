@@ -27,12 +27,13 @@ if str(ROOT) not in sys.path:
 
 from cfd import case_a1, postprocess  # noqa: E402
 from geometry.features import Feature  # noqa: E402
-from geometry.families import f1_channel, f2_manifold  # noqa: E402
+from geometry.families import f1_channel, f2_manifold, f4_pins  # noqa: E402
 
 # 2D families meshed with blockMesh + snappyHexMesh + extrudeMesh (template
 # f1_channel): geometry module and parameter class.
 SNAPPY_FAMILIES = {"F1": (f1_channel, f1_channel.F1Params),
-                   "F2": (f2_manifold, f2_manifold.F2Params)}
+                   "F2": (f2_manifold, f2_manifold.F2Params),
+                   "F4": (f4_pins, f4_pins.F4Params)}
 
 TEMPLATES = ROOT / "cfd" / "templates"
 STEPS = ("blockMesh", "surfaceFeatureExtract", "snappyHexMesh", "extrudeMesh",

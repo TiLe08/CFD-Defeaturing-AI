@@ -39,3 +39,12 @@ def test_manifold_plate_volume_changes_by_feature(kind, sign):
     v0, v1 = em.f2_plate(p, []).volume, em.f2_plate(p, [f]).volume
     assert v1 - v0 == pytest.approx(sign * f.w * f.h * em.f2_dims(p)["depth"], rel=1e-6)
     assert em.f2_fluid(p, [f]).is_watertight
+
+
+def test_pin_field_plate_volume_changes_by_feature_section():
+    from geometry.families import f4_pins
+    p = f4_pins.F4Params()
+    f = Feature(kind="bump", s=p.s_slot, w=p.H, h=0.3 * p.H)
+    v0, v1 = em.f4_plate(p, []).volume, em.f4_plate(p, [f]).volume
+    assert v1 - v0 == pytest.approx(f.section().area * em.f4_dims(p)["depth"], rel=1e-5)
+    assert em.f4_fluid(p, [f]).is_watertight

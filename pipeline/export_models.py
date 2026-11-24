@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from geometry.families import f1_channel, f2_manifold  # noqa: E402
+from geometry.families import f1_channel, f2_manifold, f4_pins  # noqa: E402
 from geometry.features import Feature  # noqa: E402
 from pipeline import sweep  # noqa: E402
 
@@ -67,6 +67,18 @@ Abzweige (Spalte `abzweig_ueber_feature`).
 - `fluid/`: der Strömungsraum.
 - Ebene x-y ist die Plattenebene, Tiefe in z.
 
+## F4_Pin-Flowfield
+
+Flowfield aus quadratischen Pins (Stege mit gerundeten Ecken, r = 0,1 H),
+zwei versetzte Reihen zwischen zwei Seitenwänden, in die Plattenoberfläche
+gefräst und oben offen. Das Feature sitzt an der Seitenwand y = 0 unter
+einem Pin der ersten Reihe, wo die Strömung zwischen Pin und Wand
+eingeengt wird.
+
+- `platte/`: Plattenausschnitt mit Pinfeld; Ein- und Auslass durch den Plattenrand.
+- `fluid/`: der Strömungsraum.
+- Ebene x-y ist die Plattenebene, Tiefe in z.
+
 ## Feature-Typen (Spalte `feature`)
 
 | Typ | Bedeutung | Querschnitt |
@@ -92,7 +104,7 @@ Datensätzen `dataset_*.parquet` aus der CFD-Rechnung, nicht in diesem
 Paket: Druckverlust (`dQ_rel`, `relevant_tau010`) und Wärmeübergang
 (`dNu_rel`, `relevant_th_tau010`).
 
-Weitere Familien (Port, Steg-Flowfield, 3D-Ausschnitt) und Realfälle
+Weitere Familien (Port, 3D-Ausschnitt) und Realfälle
 folgen.
 """
 
@@ -147,6 +159,31 @@ def f2_plate(p: f2_manifold.F2Params, feats: list[Feature]) -> trimesh.Trimesh:
     return trimesh.boolean.difference([plate, cut], engine="manifold")
 
 
+def f4_dims(p: f4_pins.F4Params) -> dict:
+    """Pin field milled into the plate surface: depth, wall margin, floor."""
+    return {"depth": p.H, "margin": p.H, "t": p.H}
+
+
+def f4_fluid(p: f4_pins.F4Params, feats: list[Feature]) -> trimesh.Trimesh:
+    geom = f4_pins.make_polygon(p, feats)
+    return trimesh.creation.extrude_polygon(geom.polygon, height=f4_dims(p)["depth"])
+
+
+def f4_plate(p: f4_pins.F4Params, feats: list[Feature]) -> trimesh.Trimesh:
+    """Plate section with the pin field; inlet and outlet through the plate edges."""
+    d = f4_dims(p)
+    m, e, H = d["margin"], 0.05 * p.H, p.H
+    poly = f4_pins.make_polygon(p, feats).polygon
+    # extensions overlap the fluid by a full H (no slivers), never reach a pin
+    ext = [box(-m - e, 0.0, H, p.y_top), box(p.L - H, 0.0, p.L + m + e, p.y_top)]
+    u = unary_union([poly, *ext])
+    rnd = lambda ring: np.round(np.asarray(ring.coords), 12)  # noqa: E731
+    u = Polygon(rnd(u.exterior), [rnd(r) for r in u.interiors]).simplify(0)
+    cut = trimesh.creation.extrude_polygon(u, height=d["depth"] + e)
+    plate = trimesh.creation.box(bounds=[[-m, -m, -d["t"]], [p.L + m, p.y_top + m, d["depth"]]])
+    return trimesh.boolean.difference([plate, cut], engine="manifold")
+
+
 FAMILIES = {
     "F1": {"designs": ("f1", "f1x"), "folder": "F1_Flowfield-Kanal", "bauteil": "Flowfield-Kanal (Bipolarplatte)",
            "params": f1_channel.F1Params, "platte": f1_plate, "fluid": f1_fluid,
@@ -154,6 +191,9 @@ FAMILIES = {
     "F2": {"designs": ("f2", "f2x"), "folder": "F2_Verteiler", "bauteil": "Verteiler (Manifold) mit Kanalabgängen",
            "params": f2_manifold.F2Params, "platte": f2_plate, "fluid": f2_fluid,
            "width_mm": lambda p: f2_dims(p)["depth"] * MM},
+    "F4": {"designs": ("f4",), "folder": "F4_Pin-Flowfield", "bauteil": "Pin-Flowfield (Bipolarplatte)",
+           "params": f4_pins.F4Params, "platte": f4_plate, "fluid": f4_fluid,
+           "width_mm": lambda p: f4_dims(p)["depth"] * MM},
 }
 
 
@@ -193,6 +233,8 @@ def export(families: list[str], out: Path, designs: dict | None = None) -> pd.Da
                 "Re": spec["flow"]["Re"], "H_mm": p.H * MM, "L_mm": p.L * MM,
                 "tiefe_bzw_breite_mm": fam["width_mm"](p),
             }
+            if fam_id == "F4":
+                row.update(pin_a_over_H=p.a, pitch_over_H=p.pitch, n_pins=len(p.pins()))
             if fam_id == "F2":
                 row.update(n_abzweige=p.n_branch, b_over_H=p.b, pitch_over_H=p.pitch,
                            abzweig_ueber_feature=p.slot_branch + 1)
