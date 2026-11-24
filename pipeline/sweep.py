@@ -325,10 +325,12 @@ def design_f4_trial(Re: float = 50.0) -> list[dict]:
     return specs
 
 
-# F4 data set: pin flow field. Re is kept low (10-150, based on H) so that
+# F4 data set: pin flow field. Re is kept low (10-60, based on H) so that
 # the flow behind the pins stays steady; pin flow fields of electrolyzers run
-# in this laminar range. All seven feature types.
-F4_RANGES = {"Re": (10.0, 150.0), "a_over_H": (0.5, 1.0), "pitch_over_H": (1.5, 3.0),
+# in this laminar range. First sandbox run with 10-150: every base above
+# Re ~ 75 with large pins had a residual stuck at 1e-2 (unsteady wake).
+# All seven feature types.
+F4_RANGES = {"Re": (10.0, 60.0), "a_over_H": (0.5, 1.0), "pitch_over_H": (1.5, 3.0),
              "h_over_H": (0.05, 0.5), "w_over_H": (0.1, 2.0)}
 F4_SEED = 2030
 ALL_KINDS = ("groove", "rib", "wedge", "bump", "round_groove", "chamfer_rib", "engraving")

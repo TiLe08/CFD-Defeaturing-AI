@@ -33,7 +33,7 @@ class F4Params:
     pitch: float = 2.0  # pin spacing along the flow / H
     n_cols: int = 6  # pins per row
     L_up: float = 6.0  # inlet to the first pin / H
-    L_down: float = 8.0  # last pin to the outlet / H
+    L_down: float = 8.0  # last pin to the outlet / H (at least; L is rounded to whole H)
     row_y: tuple = (1.25, 2.75)  # pin centre lines / H (second row shifted by pitch / 2)
     slot_col: int = 2  # the feature slot lies below this pin of the first row
     slot_w_max: float = 2.0  # largest feature width / H
@@ -47,7 +47,10 @@ class F4Params:
     @property
     def L(self) -> float:
         last = self.L_up + (self.n_cols - 1 + 0.5) * self.pitch + self.a
-        return (last + self.L_down) * self.H
+        # rounded up to whole H: the outlet then sits at the same place
+        # relative to the background cells as in F1 (an arbitrary L gave
+        # skew faces at the outlet corner)
+        return float(np.ceil(last + self.L_down - 1e-9)) * self.H
 
     @property
     def s_slot(self) -> float:
