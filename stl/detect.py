@@ -144,16 +144,23 @@ def _face_samples(n: int = 4) -> np.ndarray:
     return np.column_stack([1 - b.sum(1), b])
 
 
-def face_coverage(mesh, field_fn, eps, n: int = 4, chunk: int = 200_000):
-    """Fraction of each face's area lying farther than eps from the envelope."""
+def face_coverage(mesh, field_fns, eps, n: int = 4, chunk: int = 200_000):
+    """Fraction of each face's area lying farther than eps from the envelope.
+
+    field_fns is one function or a list of functions; with a list the result
+    has one column per function.
+    """
+    single = callable(field_fns)
+    fns = [field_fns] if single else list(field_fns)
     bary = _face_samples(n)
     tri = mesh.triangles
-    cov = np.empty(len(tri))
+    cov = np.empty((len(tri), len(fns)))
     for s in range(0, len(tri), chunk):
         t = tri[s:s + chunk]
         pts = np.einsum("sk,fkd->fsd", bary, t).reshape(-1, 3)
-        cov[s:s + chunk] = (field_fn(pts).reshape(len(t), -1) > eps).mean(1)
-    return cov
+        for k, fn in enumerate(fns):
+            cov[s:s + chunk, k] = (fn(pts).reshape(len(t), -1) > eps).mean(1)
+    return cov[:, 0] if single else cov
 
 
 def _height_over_opening(mesh, faces_idx, c, n, loops):
@@ -165,6 +172,91 @@ def _height_over_opening(mesh, faces_idx, c, n, loops):
         cs = [mesh.vertices[lp].mean(0) for lp in loops]
         d = np.r_[d, [abs((x - c) @ n) for x in cs]]
     return float(d.max())
+
+
+def _reject_reason(mesh, comp, eps, length, w, c, n, loops, h):
+    if not loops or h <= eps:
+        # flat patches (fillet slivers along sharp edges) are no features
+        return "flat"
+    span = np.ptp(mesh.vertices[np.unique(mesh.faces[comp])], axis=0)
+    if (span >= 0.9 * mesh.extents).sum() >= 2:
+        # a band around the whole part (e.g. its thin side walls) is no feature
+        return "band"
+    rim_dev = max(_rim_deviation(mesh.vertices[lp]) for lp in loops)
+    if rim_dev > MAX_RIM_DEVIATION * h:
+        # strips wrapped around an edge of the part (rounding by opening/
+        # closing) have a strongly bent rim; real features have a flat-ish one
+        return "bent rim"
+    return None
+
+
+RIM_PLANARITY = 0.05  # same as defeature.PLANARITY_TOL: rim deviation from its plane / rim size
+MAX_GROW_RINGS = 150
+MAX_GROW_AREA = 10.0  # added area per rim, relative to (rim size)^2
+
+
+def _loop_planarity(V, lp):
+    p = V[lp]
+    c, n = _plane(p)
+    return float(np.abs((p - c) @ n).max()) / (float(np.ptp(p, axis=0).max()) or 1.0)
+
+
+def _grow_rims(mesh, comp, taken, nbrs, on_surface):
+    """Extend a feature over short passages until its rims reach the surface.
+
+    A pressure tap or a small cross hole that connects a deep channel to the
+    outer skin is shallower than one voxel, so it is not part of the feature
+    and the feature's rim runs along the saddle-shaped intersection of the
+    two holes, deep inside the part. Capping there would fail or leave the
+    tap as a pit. For every rim that is not flat, grow the feature ring by
+    ring across it (never into faces of other features, at most a small
+    area) and keep the growth only if the grown band is a clean tube whose
+    far rim lies on the outer surface (on_surface).
+    """
+    V, F = mesh.vertices, mesh.faces
+    A = mesh.area_faces
+    loops = boundary_loops(F[comp])
+    bad = [lp for lp in loops if _loop_planarity(V, lp) > RIM_PLANARITY]
+    if not bad:
+        return comp
+    current = set(int(x) for x in comp)
+    vf = mesh.vertex_faces
+    for lp0 in bad:
+        size = float(np.ptp(V[lp0], axis=0).max())
+        rim0 = set(lp0)
+        band: set = set()
+        lp = lp0
+        added = 0.0
+        ok = False
+        for _ in range(MAX_GROW_RINGS):
+            blocked = current | band
+            ring = {int(f) for v in lp for f in vf[v] if f >= 0 and f not in blocked and not taken[f]}
+            # close pinholes next to the new ring: a free face whose three
+            # edge neighbours all belong to the grown region
+            grown = blocked | ring
+            for f in {int(g) for r in ring for g in nbrs[r]} - grown:
+                if not taken[f] and all(int(g) in grown for g in nbrs[f]):
+                    ring.add(f)
+            if not ring:
+                break
+            added += float(A[list(ring)].sum())
+            if added > MAX_GROW_AREA * size ** 2:
+                break
+            band |= ring
+            # the band must stay a tube: the old rim on one side, one new rim
+            band_loops = boundary_loops(F[np.fromiter(band, int)])
+            if len(band_loops) != 2:
+                break
+            far = [x for x in band_loops if set(x) != rim0]
+            if len(far) != 1:
+                break
+            lp = far[0]
+            if on_surface(V[lp]):
+                ok = True
+                break
+        if ok:
+            current |= band
+    return np.asarray(sorted(current))
 
 
 def detect_features(mesh: trimesh.Trimesh, env: Envelope, eps: float | None = None,
@@ -180,7 +272,8 @@ def detect_features(mesh: trimesh.Trimesh, env: Envelope, eps: float | None = No
     if eps is None:
         # one voxel: the smallest reliably detectable depth is about 2-3 voxels
         eps = 1.0 * env.pitch
-    cov = face_coverage(mesh, lambda p: np.maximum(env.depth_closed(p), env.height_opened(p)), eps)
+    cov = face_coverage(mesh, [env.depth_closed, env.height_opened], eps)
+    cov_any = cov.max(1)
     adj = mesh.face_adjacency
 
     def components(mask):
@@ -188,49 +281,83 @@ def detect_features(mesh: trimesh.Trimesh, env: Envelope, eps: float | None = No
         return [np.asarray(sorted(c)) for c in trimesh.graph.connected_components(
             adj[both], nodes=np.flatnonzero(mask), min_len=min_faces)]
 
-    # Rounding by opening/closing next to a feature can pull thin triangles of
-    # the surrounding surface into the region. They lie in the plane of the
-    # opening and face the same way; trim them and split again if needed.
-    work = components(cov >= min_coverage)
-    candidates = []
+    # Work items are (faces, kind); kind is None while concave and convex
+    # faces are still mixed (kind then follows from the geometry).
+    work = [(c, None) for c in components(cov_any >= min_coverage)]
+    total_area = float(mesh.area)
+    feats = []
+    rejected = 0
+    face_feature = np.full(len(mesh.faces), -1)
+    accepted = []
+
+    def split_by_kind(comp):
+        cc = cov[comp, 0] >= cov[comp, 1]
+        parts = []
+        for k, sel in (("concave", cc), ("convex", ~cc)):
+            sel = sel & (cov[comp, 0 if k == "concave" else 1] >= min_coverage)
+            if sel.any():
+                mask = np.zeros(len(mesh.faces), bool)
+                mask[comp[sel]] = True
+                parts += [(x, k) for x in components(mask)]
+        return parts
+
     while work:
-        comp = work.pop()
-        _, _, _, c, n, loops = _opening_geometry(mesh, comp)
+        comp, kind = work.pop()
+        length, w, footprint, c, n, loops = _opening_geometry(mesh, comp)
+        # Rounding by opening/closing next to a feature can pull thin triangles
+        # of the surrounding surface into the region. They lie in the plane of
+        # the opening and face the same way; trim them and split again if needed.
         if loops:
             d = np.abs((mesh.vertices[mesh.faces[comp]] - c) @ n).max(1)
             flat = (d <= eps) & (mesh.face_normals[comp] @ n > 0.9)
             if flat.any() and not flat.all():
                 mask = np.zeros(len(mesh.faces), bool)
                 mask[comp[~flat]] = True
-                work += components(mask)
+                work += [(x, kind) for x in components(mask)]
                 continue
-        candidates.append(comp)
-
-    total_area = float(mesh.area)
-    feats = []
-    rejected = 0
-    face_feature = np.full(len(mesh.faces), -1)
-    for comp in sorted(candidates, key=lambda c: -mesh.area_faces[c].sum()):
-        length, w, footprint, c, n, loops = _opening_geometry(mesh, comp)
         h = _height_over_opening(mesh, comp, c, n, loops) if loops else 0.0
-        if not loops or h <= eps:
-            # flat patches (fillet slivers along sharp edges) are no features
+        reason = _reject_reason(mesh, comp, eps, length, w, c, n, loops, h)
+        if reason is not None:
+            if kind is None:
+                # Concave and convex regions that touch are merged above. On
+                # parts with thin walls (a wing with channels close to the
+                # skin, a thin trailing edge) the opening shaves off large
+                # areas, and every hole then drowns in one huge region. Split
+                # the region by kind and try the parts on their own.
+                parts = split_by_kind(comp)
+                if parts and not (len(parts) == 1 and len(parts[0][0]) == len(comp)):
+                    work += parts
+                    continue
             rejected += 1
             continue
-        span = np.ptp(mesh.vertices[np.unique(mesh.faces[comp])], axis=0)
-        if (span >= 0.9 * mesh.extents).sum() >= 2:
-            # a band around the whole part (e.g. its thin side walls) is no feature
-            rejected += 1
-            continue
-        rim_dev = max(_rim_deviation(mesh.vertices[lp]) for lp in loops)
-        if rim_dev > MAX_RIM_DEVIATION * h:
-            # strips wrapped around an edge of the part (rounding by opening/
-            # closing) have a strongly bent rim; real features have a flat-ish one
-            rejected += 1
-            continue
-        # concave if the feature surface lies below its opening, convex if above
-        vids = np.unique(mesh.faces[comp])
-        k = "concave" if float(((mesh.vertices[vids] - c) @ n).mean()) < 0 else "convex"
+        if kind is None:
+            # concave if the feature surface lies below its opening, convex if above
+            vids = np.unique(mesh.faces[comp])
+            kind = "concave" if float(((mesh.vertices[vids] - c) @ n).mean()) < 0 else "convex"
+        accepted.append((comp, kind, length, w, footprint, c, n, loops, h))
+    taken = np.zeros(len(mesh.faces), bool)
+    for a in accepted:
+        taken[a[0]] = True
+    grown = []
+    # edge neighbours per face (CSR), for growing features over short passages
+    a = np.concatenate([adj, adj[:, ::-1]])
+    a = a[np.argsort(a[:, 0], kind="stable")]
+    starts = np.searchsorted(a[:, 0], np.arange(len(mesh.faces) + 1))
+    nbrs = [a[starts[i]:starts[i + 1], 1] for i in range(len(mesh.faces))] if accepted else []
+    for comp, k, length, w, footprint, c, n, loops, h in accepted:
+        if k == "concave":
+            on_surface = lambda p: bool(env.depth_closed(p).max() <= 0.5 * eps)  # noqa: E731
+        else:
+            on_surface = lambda p: bool(env.height_opened(p).max() <= 0.5 * eps)  # noqa: E731
+        new = _grow_rims(mesh, comp, taken, nbrs, on_surface)
+        if len(new) != len(comp):
+            taken[new] = True
+            comp = new
+            length, w, footprint, c, n, loops = _opening_geometry(mesh, comp)
+            h = _height_over_opening(mesh, comp, c, n, loops)
+        grown.append((comp, k, length, w, footprint, c, n, loops, h))
+    for comp, k, length, w, footprint, c, n, loops, h in sorted(
+            grown, key=lambda a: -mesh.area_faces[a[0]].sum()):
         area = float(mesh.area_faces[comp].sum())
         fid = len(feats)
         face_feature[comp] = fid

@@ -161,6 +161,10 @@ async function loaded(res) {
   const ext = d.bbox[1].map((v, i) => v - d.bbox[0][i]);
   $("loadinfo").textContent = `${d.name}: ${d.mesh.n_faces.toLocaleString("de-DE")} Dreiecke, ${ext.map(fmt).join(" × ")} ${d.unit}`;
   $("loadinfo").className = "info";
+  if (d.notes && d.notes.length) {
+    $("loadinfo").textContent += "\n" + d.notes.join("\n");
+    $("loadinfo").className = "info warn";
+  }
   enable("step-detect"); enable("step-review", false); enable("step-export", false);
   $("flist").innerHTML = ""; $("counts").textContent = ""; $("detectinfo").textContent = "";
 }
@@ -215,8 +219,11 @@ $("analyse").addEventListener("click", async () => {
     const p = d.params;
     let txt = `${d.features.length} Features gefunden in ${(d.timings.envelope_s + d.timings.detect_s).toFixed(1)} s ` +
       `(Voxel ${fmt(p.pitch)} ${d.unit}, Gitter ${p.grid.join("×")}).`;
-    $("detectinfo").textContent = txt + (d.warnings.length ? "\n" + d.warnings.join("\n") : "");
-    $("detectinfo").className = d.warnings.length ? "info warn" : "info";
+    const warn = [...d.warnings];
+    if (!d.features.length) warn.push("Nichts gefunden. Tipp: r_max etwas größer als die halbe Breite " +
+      "der gesuchten Bohrung oder Nut wählen. Sehr kleine Features (unter ca. 2 Voxeln Tiefe) mit Genauigkeit „Fein“ suchen.");
+    $("detectinfo").textContent = txt + (warn.length ? "\n" + warn.join("\n") : "");
+    $("detectinfo").className = warn.length ? "info warn" : "info";
     enable("step-review"); enable("step-export");
   } catch (e) { $("detectinfo").textContent = e.message; $("detectinfo").className = "info err"; }
   finally { busy(false); }
@@ -316,7 +323,9 @@ $("export").addEventListener("click", async () => {
       session: st.sid, decisions: st.decisions, decided_by: decidedBy(), out_unit: $("outunit").value,
     });
     const blob = await res.blob();
-    const name = (res.headers.get("Content-Disposition") || "").match(/filename="(.+)"/)?.[1] || "defeaturing.zip";
+    const cd = res.headers.get("Content-Disposition") || "";
+    const utf = cd.match(/filename\*=UTF-8''([^;]+)/);
+    const name = (utf ? decodeURIComponent(utf[1]) : cd.match(/filename="(.+?)"/)?.[1]) || "defeaturing.zip";
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob); a.download = name; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);

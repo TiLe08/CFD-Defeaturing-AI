@@ -76,3 +76,20 @@ def test_b0_rule():
     feats = [{"id": 0, "h": 0.001}, {"id": 1, "h": 0.01}, {"id": 2, "h": 0.002}]
     s = b0_suggest(feats, l_ref=0.1, s0=0.02)
     assert [x["decision"] for x in s] == ["remove", "keep", "unsure"]
+
+
+def test_umlaut_file_name_and_load_notes(client):
+    """File names like "Flügelmodell" and multi-body STLs (as from a CAD assembly)."""
+    import trimesh
+    box = trimesh.creation.box([10, 10, 10])
+    data = trimesh.exchange.stl.export_stl(trimesh.util.concatenate([box, box.copy().apply_translation([5, 0, 0])]))
+    r = client.post("/api/load", files={"file": ("Verlängertes Flügelmodell.stl", data)}, data={"unit": "mm"})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["name"] == "Verlängertes Flügelmodell" and d["notes"]
+    client.post("/api/analyse", json={"session": d["session"], "max_voxels": 200_000})
+    r = client.post("/api/export", json={"session": d["session"], "decisions": {}, "out_unit": "m"})
+    assert r.status_code == 200
+    assert "filename*=UTF-8''Verl%C3%A4ngertes%20Fl%C3%BCgelmodell_defeaturing.zip" in r.headers["content-disposition"]
+    names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
+    assert "Verlängertes Flügelmodell_defeatured.stl" in names
