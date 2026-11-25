@@ -51,6 +51,56 @@ def demo_plate() -> tuple[trimesh.Trimesh, list]:
     return _to_trimesh(plate), truth
 
 
+def _naca_sym(t: float, c: float, n: int = 80) -> np.ndarray:
+    """Closed outline of a symmetric NACA 4-digit profile (x along chord)."""
+    beta = np.linspace(0, np.pi, n)
+    x = 0.5 * (1 - np.cos(beta)) * c
+    xc = x / c
+    yt = 5 * t * c * (0.2969 * np.sqrt(xc) - 0.1260 * xc - 0.3516 * xc ** 2
+                      + 0.2843 * xc ** 3 - 0.1036 * xc ** 4)  # closed trailing edge
+    up = np.column_stack([x, yt])
+    lo = np.column_stack([x[::-1], -yt[::-1]])[1:-1]
+    return np.vstack([up, lo])[::-1]  # counter-clockwise
+
+
+def demo_wing() -> tuple[trimesh.Trimesh, dict]:
+    """Wing section like a wind-tunnel model with measurement holes. Units: mm.
+
+    NACA 0024, chord 120, span 150 (z from 0 = root face to 150 = tip face):
+      * a spanwise through bore d = 5.4 (assembly rod),
+      * a blind pressure channel d = 2.4 from the root face, only 1 mm
+        under the upper skin, ending in a pressure tap d = 1.5 that runs
+        straight up to the skin.
+    The thin wall over the channel and the sharp trailing edge are what
+    the size-based opening turns into large "protrusions"; the tap meets
+    the channel along a saddle-shaped rim. Both used to break detection
+    or capping (wing model of the project, Nov 2026).
+
+    Returns the mesh and facts for tests (volume of the plain profile body).
+    """
+    if m3d is None:
+        raise ImportError("manifold3d is required for demo parts")
+    M = m3d.Manifold
+    c, t, span = 120.0, 0.24, 150.0
+    outline = _naca_sym(t, c)
+    body = m3d.CrossSection([outline.tolist()]).extrude(span)
+    plain_volume = body.volume()
+    seg = 48
+    # through bore along the span
+    bore = M.cylinder(span + 4, 2.7, 2.7, seg).translate([40.0, 0.0, -2.0])
+    # pressure channel 1 mm under the upper skin at x = 30
+    x0 = 30.0
+    upper = outline[outline[:, 1] >= 0]
+    upper = upper[np.argsort(upper[:, 0])]
+    y_skin = float(np.interp(x0, upper[:, 0], upper[:, 1]))
+    y0 = y_skin - 1.0 - 1.2
+    channel = M.cylinder(101.0, 1.2, 1.2, 32).translate([x0, y0, -1.0])
+    tap = M.cylinder(y_skin - y0 + 3.0, 0.75, 0.75, 24).rotate([-90.0, 0.0, 0.0]).translate([x0, y0, 98.0])
+    wing = body - bore - channel - tap
+    return _to_trimesh(wing), {"plain_volume": plain_volume, "chord": c, "span": span,
+                                 "tap_at": (x0, y_skin, 98.0)}
+
+
 def write_demo(path, unit_scale: float = 1.0):
     mesh, _ = demo_plate()
     mesh.apply_scale(unit_scale)

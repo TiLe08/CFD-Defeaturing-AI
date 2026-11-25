@@ -22,6 +22,11 @@ from shapely.geometry import Point, Polygon
 from .detect import Detection, boundary_loops
 
 PLANARITY_TOL = 0.05  # max. rim deviation from its plane, relative to rim size
+# Small openings on a curved surface (a pressure tap on a wing nose) are never
+# flat. Their cap follows the rim (no interior points) and may bow up to this
+# fraction of the rim size, as long as the opening is small against the part.
+CURVED_TOL = 0.3
+CURVED_MAX_SIZE = 0.03  # rim size relative to the part diagonal
 CAP_TOL_H = 0.5  # max. rim deviation from the flat cap, relative to feature height
 
 
@@ -60,8 +65,21 @@ class CapError(RuntimeError):
     pass
 
 
-def _cap_group(V, loops):
-    """Triangulate one set of coplanar rims. loops run like the remaining surface."""
+def _edge_keys(a, b, n):
+    lo, hi = np.minimum(a, b), np.maximum(a, b)
+    return lo.astype(np.int64) * n + hi
+
+
+def _cap_group(V, loops, part_size: float = np.inf, existing=None):
+    """Triangulate one set of coplanar rims. loops run like the remaining surface.
+
+    existing: sorted keys of the edges of the remaining surface. A cap
+    triangle must not reuse such an edge across the opening (two rim points
+    already joined by a triangle outside), or the surface becomes
+    non-manifold; a single round rim is then closed by a fan around a new
+    centre point instead. Returns (faces, deviation, new_vertices); new
+    vertices get the indices len(V), len(V) + 1, ...
+    """
     pts = [V[lp] for lp in loops]
     # cap normal: Newell normal of the reversed largest rim
     areas = []
@@ -73,7 +91,8 @@ def _cap_group(V, loops):
     allp = np.concatenate(pts)
     size = np.ptp(allp, axis=0).max()
     dev = float(np.abs((allp - c) @ n).max())
-    if dev > PLANARITY_TOL * size:
+    small = size <= CURVED_MAX_SIZE * part_size
+    if dev > (CURVED_TOL if small else PLANARITY_TOL) * size:
         raise CapError(f"Öffnung nicht eben (Abweichung {dev * 1e3:.2f} mm)")
     u, v = _frame(n)
     rings2d = [np.column_stack([(p - c) @ u, (p - c) @ v]) for p in pts]
@@ -101,10 +120,32 @@ def _cap_group(V, loops):
         raise CapError("Rand schneidet sich selbst")
     vid = np.concatenate([np.asarray(loops[i]) for i in order])
     faces = vid[tri]
-    tn = np.cross(V[faces[:, 1]] - V[faces[:, 0]], V[faces[:, 2]] - V[faces[:, 0]])
+    new_verts = np.zeros((0, 3))
+    if existing is not None and len(existing):
+        e = np.concatenate([faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]])
+        rim = set()
+        for lp in loops:
+            rim |= {(min(a, b), max(a, b)) for a, b in zip(lp, lp[1:] + lp[:1])}
+        inner = np.array([x for x in {(min(a, b), max(a, b)) for a, b in e.tolist()} if x not in rim])
+        if len(inner):
+            k = _edge_keys(inner[:, 0], inner[:, 1], len(V))
+            pos = np.clip(np.searchsorted(existing, k), 0, len(existing) - 1)
+            if (existing[pos] == k).any():
+                if len(loops) != 1:
+                    raise CapError("Deckel würde eine vorhandene Kante doppelt nutzen")
+                r = rings2d[outer]
+                c2 = r.mean(0)
+                cross = (r[:, 0] - c2[0]) * (np.roll(r[:, 1], -1) - c2[1]) -                         (r[:, 1] - c2[1]) * (np.roll(r[:, 0], -1) - c2[0])
+                if not ((cross > 0).all() or (cross < 0).all()):
+                    raise CapError("Deckel würde eine vorhandene Kante doppelt nutzen")
+                lp = np.asarray(loops[outer])
+                new_verts = V[lp].mean(0)[None, :]
+                faces = np.column_stack([np.full(len(lp), len(V)), lp, np.roll(lp, -1)])
+    VV = np.vstack([V, new_verts]) if len(new_verts) else V
+    tn = np.cross(VV[faces[:, 1]] - VV[faces[:, 0]], VV[faces[:, 2]] - VV[faces[:, 0]])
     flip = tn @ n < 0
     faces[flip] = faces[flip][:, ::-1]
-    return faces, dev
+    return faces, dev, new_verts
 
 
 def _group_loops(V, loops, owners):
@@ -160,13 +201,34 @@ def remove_features(mesh: trimesh.Trimesh, detection: Detection, remove_ids) -> 
     raise RuntimeError("defeaturing did not converge")
 
 
+def _drop_islands(mesh, keep_faces):
+    """Drop small open patches that removing features cut loose.
+
+    Two touching features (a hex nut pocket and the bore starting at its
+    floor) can leave the flat ring between them as a loose patch. It lies
+    inside the region that the caps fill, so it goes as well. Closed
+    components (further bodies of the part) are kept.
+    """
+    sub = trimesh.Trimesh(mesh.vertices, keep_faces, process=False)
+    comps = trimesh.graph.connected_components(sub.face_adjacency, nodes=np.arange(len(keep_faces)))
+    if len(comps) <= 1:
+        return keep_faces
+    area = sub.area_faces
+    comps = sorted(comps, key=lambda c: -area[c].sum())
+    keep = np.ones(len(keep_faces), bool)
+    for c in comps[1:]:
+        if boundary_loops(keep_faces[c]):
+            keep[c] = False
+    return keep_faces[keep]
+
+
 def _try_remove(mesh, detection, active):
     V = mesh.vertices
     F = mesh.faces
     if not active:
         return DefeatureResult(mesh=mesh.copy(), removed=[])
     gone = np.isin(detection.face_feature, active)
-    keep_faces = F[~gone]
+    keep_faces = _drop_islands(mesh, F[~gone])
     # which removed feature owns each directed rim edge
     owner_of_edge = {}
     for fi in np.flatnonzero(gone):
@@ -183,11 +245,20 @@ def _try_remove(mesh, detection, active):
             if (v, u) in owner_of_edge:
                 own.add(owner_of_edge[(v, u)])
         owners.append(own)
+    part_size = float(np.linalg.norm(mesh.extents))
+    existing = np.unique(_edge_keys(np.concatenate([keep_faces[:, 0], keep_faces[:, 1], keep_faces[:, 2]]),
+                                    np.concatenate([keep_faces[:, 1], keep_faces[:, 2], keep_faces[:, 0]]),
+                                    len(V)))
     caps, dev_by_feat, bad = [], {}, {}
+    extra = []  # new vertices of fan caps
     for grp in _group_loops(V, loops, owners):
         own = set().union(*(owners[i] for i in grp))
         try:
-            faces, dev = _cap_group(V, [loops[i] for i in grp])
+            faces, dev, nv = _cap_group(V, [loops[i] for i in grp], part_size, existing)
+            if len(nv):
+                offset = len(V) + sum(len(x) for x in extra)
+                faces = np.where(faces >= len(V), faces - len(V) + offset, faces)
+                extra.append(nv)
         except CapError as exc:
             for fid in own:
                 bad[fid] = str(exc)
@@ -204,7 +275,7 @@ def _try_remove(mesh, detection, active):
     if bad:
         return bad
     new_faces = np.concatenate([keep_faces] + caps) if caps else keep_faces
-    out = trimesh.Trimesh(V.copy(), new_faces, process=True)
+    out = trimesh.Trimesh(np.vstack([V] + extra), new_faces, process=True)
     out.remove_unreferenced_vertices()
     return DefeatureResult(
         mesh=out,

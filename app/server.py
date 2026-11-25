@@ -51,7 +51,7 @@ def _loaded(s: Session) -> dict:
     return {"session": s.id, "name": s.name, "unit": s.unit,
             "default_r": default_radius(s.mesh) * s.scale, "l_ref": s.l_ref * s.scale,
             "bbox": (s.mesh.bounds * s.scale).tolist(), "mesh": s.mesh_payload(),
-            "watertight": bool(s.mesh.is_watertight)}
+            "watertight": bool(s.mesh.is_watertight), "notes": s.load_notes}
 
 
 @app.get("/")
@@ -149,7 +149,12 @@ def export(req: DecisionReq):
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr(stl_name, stl_bytes)
         z.writestr(json_name, pj)
-    headers = {"Content-Disposition": f'attachment; filename="{s.name}_defeaturing.zip"'}
+    zip_name = f"{s.name}_defeaturing.zip"
+    # HTTP headers are latin-1: an ASCII fallback plus the UTF-8 name (RFC 6266),
+    # so file names like "Flügelmodell" or with any other letters work
+    ascii_name = zip_name.encode("ascii", "replace").decode().replace("?", "_").replace('"', "_")
+    headers = {"Content-Disposition": f"attachment; filename=\"{ascii_name}\"; "
+                                      f"filename*=UTF-8''{quote(zip_name)}"}
     out_dir = os.environ.get("FAD_OUTPUT_DIR")
     if out_dir:
         d = Path(out_dir)
