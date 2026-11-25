@@ -36,7 +36,11 @@ echo "OpenFOAM: $BASHRC"
 
 say "Schritt 3/5: Code von GitHub"
 if [ -d "$REPO_DIR/.git" ]; then
-    git -C "$REPO_DIR" pull --ff-only
+    # holt den neuesten Stand und stellt gelöschte oder veränderte Dateien
+    # wieder her (Rechenergebnisse in data/ bleiben erhalten)
+    git -C "$REPO_DIR" fetch -q origin main
+    git -C "$REPO_DIR" checkout -q -f main
+    git -C "$REPO_DIR" reset -q --hard origin/main
 else
     git clone "$REPO_URL" "$REPO_DIR"
 fi
