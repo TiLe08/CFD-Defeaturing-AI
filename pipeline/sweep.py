@@ -521,9 +521,13 @@ def plan(specs: list[dict], out: Path) -> pd.DataFrame:
         d = out / s["case_id"]
         d.mkdir(exist_ok=True)
         f = d / "spec.json"
-        if f.exists() and json.loads(f.read_text()) != s:
-            raise RuntimeError(f"{f} exists with a different spec; use a new case id")
-        f.write_text(json.dumps(s, indent=2))
+        if f.exists():
+            old = json.loads(f.read_text())
+            if rc.planned_spec(old) != s:
+                raise RuntimeError(f"{f} exists with a different spec; use a new case id")
+            # keep a spec shifted by the mesh retry (see run_case)
+        else:
+            f.write_text(json.dumps(s, indent=2))
         rows.append({"case_id": s["case_id"], "base_id": s["base_id"],
                      "role": s["role"], "n_features": len(s["features"])})
     df = pd.DataFrame(rows)

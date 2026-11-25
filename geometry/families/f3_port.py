@@ -39,6 +39,7 @@ class F3Params:
     L_rec: float = 25.0  # chamber length behind the step / S (at least; L rounded to whole H)
     slot_w_max: float = 2.0  # largest feature width / H
     slot_h_max: float = 0.5  # largest groove depth / rib height / H
+    r_corner: float = 0.05  # radius of the step edge / H (a sharp edge gave skew cells)
 
     def __post_init__(self):
         if abs(self.S * 10 - round(self.S * 10)) > 1e-9:
@@ -87,8 +88,10 @@ def floor_line(p: F3Params, features: list[Feature]):
 
 def make_polygon(p: F3Params, features: list[Feature]) -> Geometry2D:
     H, S = p.H, p.S * p.H
-    fluid = Polygon([(0.0, S), (p.x_step, S), (p.x_step, 0.0), (p.L, 0.0),
-                     (p.L, p.y_top), (0.0, p.y_top)])
+    r, xs = p.r_corner * H, p.x_step
+    t = np.linspace(0.5 * np.pi, 0.0, 7)  # quarter arc at the step edge
+    edge = [(xs - r + r * np.cos(a), S - r + r * np.sin(a)) for a in t]
+    fluid = Polygon([(0.0, S), *edge, (xs, 0.0), (p.L, 0.0), (p.L, p.y_top), (0.0, p.y_top)])
     grooves, ribs = [], []
     for f in features:
         _check(p, f)

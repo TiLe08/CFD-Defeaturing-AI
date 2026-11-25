@@ -120,3 +120,27 @@ def test_port_case_is_turbulent_without_thermal_step(tmp_path):
     lay = rc.mesh_layout(spec)
     p = rc.family_params(spec)
     assert p.S * p.H < lay["LOC_Y"] < p.y_top  # snappy seed point in the feed channel
+
+
+def test_failed_mesh_retries_with_shifted_feature(tmp_path, monkeypatch):
+    spec = next(s for s in sweep.design_f3_lhs() if s["role"] == "with")
+    case = tmp_path / spec["case_id"]
+    case.mkdir()
+    (case / "spec.json").write_text(json.dumps(spec))
+    (case / "log.checkMesh").write_text("Failed 1 mesh checks.")
+    calls = []
+    monkeypatch.setattr(rc, "run_case", lambda c, *a, **k: calls.append(c) or {})
+    assert rc._may_shift(spec)
+    rc._retry_shifted(case, spec, None, True)
+    new = json.loads((case / "spec.json").read_text())
+    H = spec["params"]["H"]
+    assert new["mesh_retry"]["k"] == 1
+    assert new["features"][0]["s"] - spec["features"][0]["s"] == pytest.approx(H / 400)
+    assert rc.planned_spec(new) == spec
+    assert not (case / "log.checkMesh").exists() and calls == [case]
+    # the sweep accepts the shifted spec as the planned one
+    sweep.plan([spec], tmp_path)
+    assert json.loads((case / "spec.json").read_text())["mesh_retry"]["k"] == 1
+    # after the last shift no further retry
+    new["mesh_retry"]["k"] = len(rc.MESH_SHIFTS)
+    assert not rc._may_shift(new)

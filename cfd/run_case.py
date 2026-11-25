@@ -341,9 +341,56 @@ def run_case(case: Path, bashrc: str | None = None, build_only: bool = False,
         st["done"] = [d for d in st["done"] if d not in later]
         st["state"] = "meshed" if step == "checkMesh" else st["state"]
         save_status(case, st)
+        if step == "checkMesh" and not _mesh_ok(case) and _may_shift(spec):
+            return _retry_shifted(case, spec, bashrc, no_fo)
     st["state"] = "solved"
     save_status(case, st)
     return st
+
+
+# Retry for a failed checkMesh: snappy now and then leaves one or two skew
+# wall faces at the foot of a feature (F3: about 20 % of the cases, F1/F2/F4
+# about 2 %). The face depends chaotically on the exact feature position, so
+# the feature is moved by a tiny fraction of a cell and meshed again. The
+# shifted position is written to spec.json and geometry.json, so labels and
+# descriptors belong to the geometry that was actually computed.
+MESH_SHIFTS = (1.0, -1.0, 2.0)  # in units of H / 400 (1 % of a fine cell)
+
+
+def _mesh_ok(case: Path) -> bool:
+    log = case / "log.checkMesh"
+    return log.exists() and "Mesh OK." in log.read_text(errors="replace")
+
+
+def _may_shift(spec: dict) -> bool:
+    return (spec.get("role") == "with" and bool(spec["features"]) and not is_a1(spec)
+            and spec.get("mesh_retry", {}).get("k", 0) < len(MESH_SHIFTS))
+
+
+def planned_spec(spec: dict) -> dict:
+    """The spec as planned, before any mesh retry shifted the features."""
+    if "mesh_retry" not in spec:
+        return spec
+    s0 = spec["mesh_retry"]["s_orig"]
+    out = {k: v for k, v in spec.items() if k != "mesh_retry"}
+    out["features"] = [dict(f, s=s) for f, s in zip(spec["features"], s0)]
+    return out
+
+
+def _retry_shifted(case: Path, spec: dict, bashrc, no_fo) -> dict:
+    retry = dict(spec.get("mesh_retry", {"k": 0}))
+    if "s_orig" not in retry:
+        retry["s_orig"] = [f["s"] for f in spec["features"]]
+    retry["k"] += 1
+    ds = MESH_SHIFTS[retry["k"] - 1] * family_params(spec).H / 400
+    retry["ds"] = ds
+    spec = dict(spec, mesh_retry=retry,
+                features=[dict(f, s=s0 + ds) for f, s0 in zip(spec["features"], retry["s_orig"])])
+    for item in case.iterdir():
+        if item.name != "spec.json":
+            shutil.rmtree(item) if item.is_dir() else item.unlink()
+    (case / "spec.json").write_text(json.dumps(spec, indent=2))
+    return run_case(case, bashrc, no_fo=no_fo)
 
 
 def summary_line(case: Path) -> str:
