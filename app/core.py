@@ -22,7 +22,7 @@ from models.baselines import KEEP, REMOVE, UNSURE, b0_suggest
 from stl import defeature, detect, envelope
 from stl import io as stlio
 
-TOOL_VERSION = "0.1.0"
+TOOL_VERSION = "0.2.0"
 SCHEMA = "fad-defeaturing/1"
 
 
@@ -49,14 +49,16 @@ class Session:
     detection: object = None
     suggestions: list = field(default_factory=list)
     timings: dict = field(default_factory=dict)
+    load_notes: list = field(default_factory=list)  # repairs made while loading (German)
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
 
     # ---------------------------------------------------------------- loading
     @classmethod
     def from_bytes(cls, data: bytes, name: str, unit: str = "mm") -> "Session":
-        mesh = stlio.load_mesh(_io.BytesIO(data), unit=unit)
+        notes: list = []
+        mesh = stlio.load_mesh(_io.BytesIO(data), unit=unit, notes=notes)
         return cls(name=Path(name).stem or "bauteil", unit=unit, mesh=mesh,
-                   source_sha256=hashlib.sha256(data).hexdigest())
+                   source_sha256=hashlib.sha256(data).hexdigest(), load_notes=notes)
 
     @property
     def scale(self) -> float:
@@ -177,7 +179,7 @@ class Session:
             "code_revision": _git_rev(),
             "created": _dt.datetime.now().astimezone().isoformat(timespec="seconds"),
             "source": {"name": self.name, "unit": self.unit, "sha256": self.source_sha256,
-                       "faces": int(len(self.mesh.faces))},
+                       "faces": int(len(self.mesh.faces)), "load_notes": self.load_notes},
             "output": {"file": f"{self.name}_defeatured.stl", "unit": out_unit,
                        "faces": int(len(res.mesh.faces)), "watertight": res.watertight,
                        "volume": float(res.mesh.volume) * s_out ** 3,
