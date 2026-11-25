@@ -300,6 +300,97 @@ def design_f2_lhs(n_base: int = 20, k: int = 8, seed: int = F2_SEED,
     return specs
 
 
+def design_f4_trial(Re: float = 50.0) -> list[dict]:
+    """F4 feasibility check: pin flow field, one base configuration (as F2 trial)."""
+    from dataclasses import asdict
+
+    from geometry.families.f4_pins import F4Params
+
+    p = F4Params()
+    params = asdict(p)
+    H, nu = p.H, 1e-6
+    flow = {"U": Re * nu / H, "nu": nu, "Re": Re}
+    base = "f4_trial_b000"
+
+    def spec(cid, role, feats, mesh):
+        return _spec(f"{base}_{cid}", base, role, params, feats, flow, mesh, family="F4")
+
+    specs = [spec("without", "without", [], F1_MESH_FINE)]
+    for kind in ("groove", "rib", "bump"):
+        for h in (0.1, 0.25, 0.5):
+            f = {"kind": kind, "s": p.s_slot, "w": 0.8 * H, "h": h * H}
+            specs.append(spec(f"with_{kind}_h{h:g}", "with", [f], F1_MESH_FINE))
+    specs.append(spec("null_shift", "null_shift", [], dict(F1_MESH_FINE, box_shift=0.5)))
+    specs.append(spec("base_coarse", "base_coarse", [], F1_MESH_COARSE))
+    return specs
+
+
+# F4 data set: pin flow field. Re is kept low (10-60, based on H) so that
+# the flow behind the pins stays steady; pin flow fields of electrolyzers run
+# in this laminar range. First sandbox run with 10-150: every base above
+# Re ~ 75 with large pins had a residual stuck at 1e-2 (unsteady wake).
+# All seven feature types.
+F4_RANGES = {"Re": (10.0, 60.0), "a_over_H": (0.5, 1.0), "pitch_over_H": (1.5, 3.0),
+             "h_over_H": (0.05, 0.5), "w_over_H": (0.1, 2.0)}
+F4_SEED = 2030
+ALL_KINDS = ("groove", "rib", "wedge", "bump", "round_groove", "chamfer_rib", "engraving")
+
+
+def design_f4_lhs(n_base: int = 20, k: int = 10, seed: int = F4_SEED) -> list[dict]:
+    """F4 data set: Latin hypercube over pin fields and features, all feature types."""
+    from dataclasses import asdict
+
+    from scipy.stats import qmc
+
+    from geometry.families.f4_pins import F4Params
+
+    R = F4_RANGES
+    nu = 1e-6
+    rng = np.random.default_rng(seed)
+    pts = qmc.LatinHypercube(d=3, seed=seed).random(n_base)
+
+    def lin(u, key):
+        return R[key][0] + u * (R[key][1] - R[key][0])
+
+    def log(u, key):
+        lo, hi = np.log10(R[key][0]), np.log10(R[key][1])
+        return 10 ** (lo + u * (hi - lo))
+
+    re_vals = log(pts[:, 0], "Re")
+    gci_bases = {int(np.argmin(re_vals)), int(np.argmax(re_vals))}
+    specs = []
+    for bi, (_, u_a, u_p) in enumerate(pts):
+        p = F4Params(a=float(lin(u_a, "a_over_H")), pitch=float(lin(u_p, "pitch_over_H")))
+        params, H, Re = asdict(p), p.H, float(re_vals[bi])
+        flow = {"U": Re * nu / H, "nu": nu, "Re": Re}
+        base = f"f4_b{bi:03d}"
+
+        def spec(cid, role, feats, mesh):
+            return _spec(f"{base}_{cid}", base, role, params, feats, flow, mesh, family="F4")
+
+        specs += [spec("without", "without", [], F1_MESH_FINE),
+                  spec("base_coarse", "base_coarse", [], F1_MESH_COARSE)]
+        kind_list = _kinds(rng, ALL_KINDS, k)
+        gap = p.row_y[0] - p.a / 2  # convex features must stay below the pin
+        feats = []
+        for j, (u_h, u_w, u_s) in enumerate(qmc.LatinHypercube(d=3, seed=seed + 1000 + bi).random(k)):
+            kind = str(kind_list[j])
+            h = log(u_h, "h_over_H")
+            if kind in ("rib", "chamfer_rib", "bump", "wedge"):
+                h = min(h, 0.8 * gap)
+            w = _width(u_w, kind, *R["w_over_H"])
+            s = p.s_slot + (u_s - 0.5) * (p.slot_w_max - w) * H
+            f = {"kind": kind, "s": float(s), "w": float(w * H), "h": float(h * H)}
+            feats.append(f)
+            specs.append(spec(f"with_f{j}", "with", [f], F1_MESH_FINE))
+        if bi in gci_bases:
+            for n in (7, 14):
+                m = dict(F1_MESH_FINE, n_per_H=n)
+                specs += [spec(f"gci_without_n{n}", "gci_without", [], m),
+                          spec(f"gci_with_n{n}", "gci_with", [feats[0]], m)]
+    return specs
+
+
 def design_f1x() -> list[dict]:
     """F1 with the new feature types: 15 bases x 10 features (2 per type)."""
     return design_f1_lhs(n_base=15, k=10, seed=2028, kinds=NEW_KINDS, prefix="f1x")
@@ -314,7 +405,8 @@ DESIGNS = {"ap2": design_ap2, "f1": design_f1_lhs, "f2": design_f2_lhs, "f2_tria
            "a1_trial": design_a1_trial, "f1x": design_f1x, "f2x": design_f2x,
            # everything of one family in one run (used by the Windows scripts)
            "f1_alle": lambda: design_f1_lhs() + design_f1x(),
-           "f2_alle": lambda: design_f2_lhs() + design_f2x()}
+           "f2_alle": lambda: design_f2_lhs() + design_f2x(),
+           "f4_trial": design_f4_trial, "f4": design_f4_lhs}
 
 
 def plan(specs: list[dict], out: Path) -> pd.DataFrame:

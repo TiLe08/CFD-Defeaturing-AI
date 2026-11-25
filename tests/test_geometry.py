@@ -54,12 +54,13 @@ def test_invalid_features_rejected():
 
 
 from geometry.features import FEATURE_TYPES  # noqa: E402
-from geometry.families import f2_manifold  # noqa: E402
+from geometry.families import f2_manifold, f4_pins  # noqa: E402
 
 
 @pytest.mark.parametrize("kind", sorted(FEATURE_TYPES))
 @pytest.mark.parametrize("module, params", [(f1, f1.F1Params()),
-                                            (f2_manifold, f2_manifold.F2Params())])
+                                            (f2_manifold, f2_manifold.F2Params()),
+                                            (f4_pins, f4_pins.F4Params())])
 def test_every_feature_type_changes_area_by_its_section(kind, module, params):
     H = params.H
     f = Feature(kind=kind, s=params.s_slot, w=1.0 * H, h=0.3 * H)
@@ -81,3 +82,17 @@ def test_section_shapes():
     assert Feature(kind="wedge", **f).fill_factor() == pytest.approx(0.5)
     assert Feature(kind="bump", **f).fill_factor() == pytest.approx(3.14159 / 4, rel=1e-2)
     assert Feature(kind="chamfer_rib", **f).fill_factor() == pytest.approx(1 - 0.2)
+
+
+def test_pin_field_has_one_hole_per_pin_and_closed_surface():
+    p = f4_pins.F4Params()
+    g = f4_pins.make_polygon(p, [])
+    assert len(g.polygon.interiors) == 2 * p.n_cols
+    assert _closed(f4_pins.extrude(g, 0.0, p.H)).is_watertight
+
+
+def test_pin_field_rejects_rib_that_closes_the_gap():
+    p = f4_pins.F4Params()
+    gap = (p.row_y[0] - p.a / 2) * p.H
+    with pytest.raises(ValueError):
+        f4_pins.make_polygon(p, [Feature(kind="rib", s=p.s_slot, w=p.H, h=0.95 * gap)])

@@ -38,10 +38,11 @@ Die Ergebnisse von Claudes Testlauf liegen in `docs/ap2_testlauf_claude_v1912.md
 | A1-Netz mit gmsh: Außennetz je Basis einmal vernetzt und wiederverwendet, nur ein Fenster am Feature neu (Grenzschicht aus Vierecken, im Fenster dünne Schicht) | `cfd/mesh_gmsh.py` | alle Probefälle bestehen checkMesh; Außennetz knotengleich |
 
 | F2 Verteiler (Manifold) mit vier Abzweigen, Feature am Boden unter einem Abzweig (Re 20–500, b/H 0,3–1, Teilung 1,5–3 H) | `geometry/families/f2_manifold.py`, `--design f2` (20 Basen × 8 Features) | Probelauf und Sandbox-Lauf |
+| F4 Pin-Flowfield: zwei versetzte Reihen quadratischer Pins (Ecken r = 0,1 H) zwischen Seitenwänden, Feature an der Seitenwand unter einem Pin (Re 10–60, a/H 0,5–1, Teilung 1,5–3 H, alle sieben Feature-Typen) | `geometry/families/f4_pins.py`, `--design f4` (20 Basen × 10 Features) | Probelauf und Sandbox-Lauf |
 | Wärmeübergang: Temperatur als passiver Skalar auf dem fertigen Strömungsfeld (`scalarTransportFoam`), Feature-Wand isotherm, andere Wände adiabat, Pr = 3 (Wasser, 60–80 °C); Zielgröße Nusselt-Zahl, eigenes Label `relevant_th_tau*` | `cfd/templates/f1_channel/thermal/`, `cfd/postprocess.py` | F1 und F2; ca. +20 % Rechenzeit |
 | STL-Paket der Elektrolyseur-Modelle (Platte und Fluidraum, mm) | `pipeline/export_models.py` | F1 und F2 |
 
-Unter Windows: `windows/5_F1_Datensatz_rechnen.bat` und `windows/6_F2_Datensatz_rechnen.bat` (rufen `scripts/run_design.sh f1` bzw. `f2` auf). Fälle, die vor der Temperaturrechnung gerechnet wurden, bekommen beim nächsten Start nur den Temperaturschritt nachgerechnet.
+Unter Windows: `windows/5_F1_Datensatz_rechnen.bat`, `6_F2_...` und `7_F4_...` (rufen `scripts/run_design.sh f1_alle`, `f2_alle` bzw. `f4` auf). Fälle, die vor der Temperaturrechnung gerechnet wurden, bekommen beim nächsten Start nur den Temperaturschritt nachgerechnet.
 
 ## Einrichtung (WSL2/Ubuntu)
 
@@ -105,12 +106,13 @@ Claudes Umgebung hat nur OpenFOAM v1912 aus dem Ubuntu-Paket. Dort brechen alle 
 - **A1-Außennetz je Basis wiederverwendet:** Das Grenzschicht-Feld von gmsh liefert bei jeder Änderung (und selbst bei gleicher Eingabe) ein anderes Netz. Das ergab in den ersten Probeläufen ein Rauschen von einigen Prozent in c_d. Jetzt wird nur ein Fenster um den Slot je Fall neu vernetzt; der Rest ist knotengleich.
 - **NACA-Profil von F2 zu A1 (16.11.2026):** Fokus auf Elektrolyseur-Bauteile (Entscheidung Tim). F2 ist jetzt der Verteiler; das Profil bleibt als Anwendungsbeispiel für das Schlusskapitel.
 - **Wärmeübergang ohne Kopplung:** einphasig, konstante Stoffwerte, keine Elektrochemie, keine Wärmeleitung in der Platte. Die Temperatur beeinflusst die Strömung nicht, deshalb reicht eine lineare Gleichung auf dem eingefrorenen Feld. Wärmestrom aus der Energiebilanz (Auslass plus Rückdiffusion am Einlass), exakt für die diskrete Lösung; die Schätzung aus dem Wandgradienten weicht um < 0,1 % ab. Zwei getrennte Labels für Druck und Wärme (Entscheidung Tim, 16.11.2026).
+- **F4 mit gerundeten Pin-Ecken (r = 0,1 H) und L in ganzen H:** Mit scharfen Ecken erzeugte snappyHexMesh an den konvexen Pin-Ecken einzelne stark schiefe Zellen (checkMesh-Fehler in 11 von 12 Probefällen). Gefräste Pins haben ohnehin einen Eckenradius. Ein beliebiges L (aus Teilung und Pingröße) gab schiefe Flächen an der Auslass-Ecke; L wird deshalb auf ganze H aufgerundet. Re ≤ 60, damit die Strömung hinter den Pins stationär bleibt: Im ersten Sandbox-Lauf mit Re bis 150 blieb das Residuum aller Basen über Re ≈ 75 mit großen Pins bei 1e-2 stehen (instationärer Nachlauf).
 - **F1-Klassenbalance:** Rippen sind meist relevant, Nuten selten. Die Bereiche bleiben, Metriken werden zusätzlich je Typ berichtet (Entscheidung Tim, 12.11.2026).
 
 ## Struktur
 
 ```
-geometry/    features.py, families/f1_channel.py, families/f2_manifold.py, families/a1_naca.py
+geometry/    features.py, families/f1_channel.py, families/f2_manifold.py, families/f4_pins.py, families/a1_naca.py
 cfd/         templates/f1_channel/, templates/a1_naca/, run_case.py, case_a1.py, mesh_gmsh.py,
              postprocess.py, foamio.py
 descriptors/ geometric.py, flow.py
