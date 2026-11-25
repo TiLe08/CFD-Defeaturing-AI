@@ -1,0 +1,23 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      extrudeMeshDict;
+}
+// Collapse the snapped slab to one cell in z (pseudo-2D).
+constructFrom   patch;
+sourceCase      "$FOAM_CASE";
+sourcePatches   (front);
+exposedPatchName back;
+flipNormals     {{FLIP_NORMALS}};
+extrudeModel    linearNormal;
+nLayers         1;
+expansionRatio  1.0;
+linearNormalCoeffs
+{
+    thickness   {{THICKNESS}};
+}
+mergeFaces      false;
+mergeTol        0;

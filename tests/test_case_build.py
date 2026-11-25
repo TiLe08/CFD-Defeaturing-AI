@@ -104,3 +104,19 @@ def test_solved_case_without_thermal_step_needs_run(tmp_path):
     assert not rc.needs_run(tmp_path)
     rc.save_status(tmp_path, {"state": "failed", "done": [], "error": "x", "times": {}})
     assert not rc.needs_run(tmp_path)
+
+
+def test_port_case_is_turbulent_without_thermal_step(tmp_path):
+    spec = next(s for s in sweep.design_f3_trial() if s["role"] == "with")
+    (tmp_path / "spec.json").write_text(json.dumps(spec))
+    rc.run_case(tmp_path, build_only=True)
+    for f in tmp_path.rglob("*"):
+        if f.is_file() and f.suffix != ".stl":
+            assert "{{" not in f.read_text(), f
+    assert "kOmegaSST" in (tmp_path / "constant/turbulenceProperties").read_text()
+    assert "scalarTransport" not in rc.steps_for(spec)
+    vals = rc.placeholders(spec)
+    assert vals["K_IN"] > 0 and vals["OMEGA_IN"] > 0
+    lay = rc.mesh_layout(spec)
+    p = rc.family_params(spec)
+    assert p.S * p.H < lay["LOC_Y"] < p.y_top  # snappy seed point in the feed channel

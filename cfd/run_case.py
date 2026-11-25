@@ -27,12 +27,13 @@ if str(ROOT) not in sys.path:
 
 from cfd import case_a1, postprocess  # noqa: E402
 from geometry.features import Feature  # noqa: E402
-from geometry.families import f1_channel, f2_manifold, f4_pins  # noqa: E402
+from geometry.families import f1_channel, f2_manifold, f3_port, f4_pins  # noqa: E402
 
 # 2D families meshed with blockMesh + snappyHexMesh + extrudeMesh (template
 # f1_channel): geometry module and parameter class.
 SNAPPY_FAMILIES = {"F1": (f1_channel, f1_channel.F1Params),
                    "F2": (f2_manifold, f2_manifold.F2Params),
+                   "F3": (f3_port, f3_port.F3Params),
                    "F4": (f4_pins, f4_pins.F4Params)}
 
 TEMPLATES = ROOT / "cfd" / "templates"
@@ -83,8 +84,8 @@ def mesh_layout(spec: dict) -> dict:
         "LEVEL_BOX": m["level_box"] if box else 0,
         "BOX_X0": p.s_slot - bw + shift, "BOX_X1": p.s_slot + bw + shift,
         "BOX_Y0": -bh, "BOX_Y1": bh, "BOX_Z0": z0 - d, "BOX_Z1": z1 + d,
-        "LOC_X": 0.5 * p.L_up * H + 0.0123 * d,
-        "LOC_Y": 0.5 * H + 0.0317 * d,
+        "LOC_X": getattr(p, "loc", (0.5 * p.L_up * H, 0.5 * H))[0] + 0.0123 * d,
+        "LOC_Y": getattr(p, "loc", (0.5 * p.L_up * H, 0.5 * H))[1] + 0.0317 * d,
         "LOC_Z": 0.4321 * d,
         "THICKNESS": d,
         "FLIP_NORMALS": "true" if m.get("flip_normals", True) else "false",
@@ -102,7 +103,11 @@ def is_a1(spec: dict) -> bool:
 
 
 def steps_for(spec: dict) -> tuple[str, ...]:
-    return case_a1.STEPS if is_a1(spec) else STEPS
+    if is_a1(spec):
+        return case_a1.STEPS
+    if not thermal_settings(spec).get("enabled", True):
+        return tuple(s for s in STEPS if s != "scalarTransport")
+    return STEPS
 
 
 def placeholders(spec: dict) -> dict:
@@ -114,6 +119,11 @@ def placeholders(spec: dict) -> dict:
                 MAX_ITER=s["max_iter"], RES_P=s["res_p"], RES_U=s["res_u"])
     th = thermal_settings(spec)
     vals.update(DT=spec["flow"]["nu"] / th["Pr"], T_ITER=th["max_iter"], RES_T=th["res_T"])
+    fl = spec["flow"]
+    if "turb_intensity" in fl:  # k-omega SST inlet values (F3)
+        k_in = 1.5 * (fl["turb_intensity"] * fl["U"]) ** 2
+        l_mix = fl.get("mixing_length", 0.07) * family_params(spec).H
+        vals.update(K_IN=k_in, OMEGA_IN=k_in ** 0.5 / (0.09 ** 0.25 * l_mix))
     return vals
 
 
@@ -287,6 +297,14 @@ def run_step(case: Path, step: str, spec: dict, bashrc: str | None,
         thermal = {"H": p.H, "L_heat": p.L, "Pr": ts["Pr"], "res_T": ts["res_T"]}
         res = postprocess.collect(case, spec, d_bg=lay["_d"], slot_x=lay["_slot_x"],
                                   thermal=thermal)
+        if spec.get("family") == "F3":
+            # target: total pressure loss with bulk velocities (the static
+            # dp of an expansion is a pressure rise and can be close to zero)
+            U = spec["flow"]["U"]
+            ratio = p.H / p.y_top  # inlet / outlet height = outlet / inlet bulk velocity
+            res["Q_name"] = "dp0"
+            res["Q"] = res["dp"] + 0.5 * U * U * (1.0 - ratio ** 2)
+            res["Q_rel_sigma"] = res["dp_sigma"] / abs(res["Q"])
         (case / "result.json").write_text(json.dumps(res, indent=2))
     else:
         raise ValueError(step)
