@@ -54,7 +54,7 @@ def test_invalid_features_rejected():
 
 
 from geometry.features import FEATURE_TYPES  # noqa: E402
-from geometry.families import f2_manifold, f4_pins  # noqa: E402
+from geometry.families import f2_manifold, f3_port, f4_pins  # noqa: E402
 
 
 @pytest.mark.parametrize("kind", sorted(FEATURE_TYPES))
@@ -96,3 +96,24 @@ def test_pin_field_rejects_rib_that_closes_the_gap():
     gap = (p.row_y[0] - p.a / 2) * p.H
     with pytest.raises(ValueError):
         f4_pins.make_polygon(p, [Feature(kind="rib", s=p.s_slot, w=p.H, h=0.95 * gap)])
+
+
+@pytest.mark.parametrize("kind", sorted(FEATURE_TYPES))
+def test_port_feature_on_chamber_floor_only(kind):
+    p = f3_port.F3Params()
+    f = Feature(kind=kind, s=p.s_slot, w=p.H, h=0.3 * p.H)
+    g = f3_port.make_polygon(p, [f])
+    r = f3_port.extrude(g, 0.0, 1.0)
+    assert _closed(r).is_watertight
+    sec = f.section()
+    expected = (p.L - p.x_step) + sec.boundary.length - 2 * sum(
+        g_.bounds[2] - g_.bounds[0] for g_ in getattr(sec, "geoms", [sec]))
+    assert r["bottomWall"].area == pytest.approx(expected, rel=1e-9)  # step face is topWall
+
+
+def test_port_rejects_feature_across_the_step():
+    p = f3_port.F3Params()
+    with pytest.raises(ValueError):
+        f3_port.make_polygon(p, [Feature(kind="groove", s=p.x_step, w=p.H, h=0.1 * p.H)])
+    with pytest.raises(ValueError):
+        f3_port.F3Params(S=0.55)

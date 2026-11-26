@@ -391,6 +391,109 @@ def design_f4_lhs(n_base: int = 20, k: int = 10, seed: int = F4_SEED) -> list[di
     return specs
 
 
+# F3 (inlet port, turbulent): k-omega SST with wall functions, solver
+# settings as A1. No temperature: scalarTransportFoam has no turbulent
+# diffusivity, a turbulent heat transfer model is out of scope (stated as a
+# limitation).
+F3_SOLVER = {"max_iter": 4000, "res_p": 1e-5, "res_u": 1e-6, "n_avg": 200, "q_rel_tol": 1e-4}
+F3_THERMAL = {"enabled": False}
+
+
+def _spec_f3(case_id, base_id, role, params, features, flow, mesh):
+    s = _spec(case_id, base_id, role, params, features, flow, mesh, family="F3",
+              template="f3_port", thermal=dict(F3_THERMAL))
+    s["solver"] = dict(F3_SOLVER)
+    return s
+
+
+def design_f3_trial(Re: float = 1e4) -> list[dict]:
+    """F3 feasibility check: backward-facing step, feature inside the recirculation."""
+    from dataclasses import asdict
+
+    from geometry.families.f3_port import F3Params
+
+    p = F3Params()
+    params = asdict(p)
+    H, nu = p.H, 1e-6
+    flow = {"U": Re * nu / H, "nu": nu, "Re": Re, "turb_intensity": 0.05}
+    base = "f3_trial_b000"
+
+    def spec(cid, role, feats, mesh):
+        return _spec_f3(f"{base}_{cid}", base, role, params, feats, flow, mesh)
+
+    specs = [spec("without", "without", [], F1_MESH_FINE)]
+    for kind in ("groove", "rib"):
+        for h in (0.1, 0.25, 0.5):
+            f = {"kind": kind, "s": p.s_slot, "w": 0.5 * H, "h": h * H}
+            specs.append(spec(f"with_{kind}_h{h:g}", "with", [f], F1_MESH_FINE))
+    specs.append(spec("null_shift", "null_shift", [], dict(F1_MESH_FINE, box_shift=0.5)))
+    specs.append(spec("base_coarse", "base_coarse", [], F1_MESH_COARSE))
+    return specs
+
+
+# F3 data set: Re 5e3-3e4 (based on the feed channel height), step height
+# S/H 0.5-2 (in steps of 0.1 H), slot position behind the step 1-12 S (inside
+# the recirculation, near reattachment, recovery). All seven feature types.
+F3_RANGES = {"Re": (5e3, 3e4), "S_over_H": (0.5, 2.0), "x_slot_over_S": (1.0, 12.0),
+             "h_over_H": (0.05, 0.5), "w_over_H": (0.1, 2.0)}
+F3_SEED = 2031
+
+
+def design_f3_lhs(n_base: int = 20, k: int = 10, seed: int = F3_SEED) -> list[dict]:
+    """F3 data set: Latin hypercube over ports and features, all feature types."""
+    from dataclasses import asdict
+
+    from scipy.stats import qmc
+
+    from geometry.families.f3_port import F3Params
+
+    R = F3_RANGES
+    nu = 1e-6
+    rng = np.random.default_rng(seed)
+    pts = qmc.LatinHypercube(d=3, seed=seed).random(n_base)
+
+    def lin(u, key):
+        return R[key][0] + u * (R[key][1] - R[key][0])
+
+    def log(u, key):
+        lo, hi = np.log10(R[key][0]), np.log10(R[key][1])
+        return 10 ** (lo + u * (hi - lo))
+
+    re_vals = log(pts[:, 0], "Re")
+    gci_bases = {int(np.argmin(re_vals)), int(np.argmax(re_vals))}
+    specs = []
+    for bi, (_, u_s, u_x) in enumerate(pts):
+        S = round(float(lin(u_s, "S_over_H")), 1)
+        x_lo = max(R["x_slot_over_S"][0], 1.2 / S)  # slot (+-1 H) must stay behind the step
+        x_slot = x_lo + u_x * (R["x_slot_over_S"][1] - x_lo)
+        p = F3Params(S=S, x_slot=float(x_slot))
+        params, H, Re = asdict(p), p.H, float(re_vals[bi])
+        flow = {"U": Re * nu / H, "nu": nu, "Re": Re, "turb_intensity": 0.05}
+        base = f"f3_b{bi:03d}"
+
+        def spec(cid, role, feats, mesh):
+            return _spec_f3(f"{base}_{cid}", base, role, params, feats, flow, mesh)
+
+        specs += [spec("without", "without", [], F1_MESH_FINE),
+                  spec("base_coarse", "base_coarse", [], F1_MESH_COARSE)]
+        kind_list = _kinds(rng, ALL_KINDS, k)
+        feats = []
+        for j, (u_h, u_w, u_sl) in enumerate(qmc.LatinHypercube(d=3, seed=seed + 1000 + bi).random(k)):
+            kind = str(kind_list[j])
+            h = log(u_h, "h_over_H")
+            w = _width(u_w, kind, *R["w_over_H"])
+            s = p.s_slot + (u_sl - 0.5) * (p.slot_w_max - w) * H
+            f = {"kind": kind, "s": float(s), "w": float(w * H), "h": float(h * H)}
+            feats.append(f)
+            specs.append(spec(f"with_f{j}", "with", [f], F1_MESH_FINE))
+        if bi in gci_bases:
+            for n in (7, 14):
+                m = dict(F1_MESH_FINE, n_per_H=n)
+                specs += [spec(f"gci_without_n{n}", "gci_without", [], m),
+                          spec(f"gci_with_n{n}", "gci_with", [feats[0]], m)]
+    return specs
+
+
 def design_f1x() -> list[dict]:
     """F1 with the new feature types: 15 bases x 10 features (2 per type)."""
     return design_f1_lhs(n_base=15, k=10, seed=2028, kinds=NEW_KINDS, prefix="f1x")
@@ -406,7 +509,8 @@ DESIGNS = {"ap2": design_ap2, "f1": design_f1_lhs, "f2": design_f2_lhs, "f2_tria
            # everything of one family in one run (used by the Windows scripts)
            "f1_alle": lambda: design_f1_lhs() + design_f1x(),
            "f2_alle": lambda: design_f2_lhs() + design_f2x(),
-           "f4_trial": design_f4_trial, "f4": design_f4_lhs}
+           "f4_trial": design_f4_trial, "f4": design_f4_lhs, "f3_trial": design_f3_trial,
+           "f3": design_f3_lhs}
 
 
 def plan(specs: list[dict], out: Path) -> pd.DataFrame:
@@ -417,9 +521,13 @@ def plan(specs: list[dict], out: Path) -> pd.DataFrame:
         d = out / s["case_id"]
         d.mkdir(exist_ok=True)
         f = d / "spec.json"
-        if f.exists() and json.loads(f.read_text()) != s:
-            raise RuntimeError(f"{f} exists with a different spec; use a new case id")
-        f.write_text(json.dumps(s, indent=2))
+        if f.exists():
+            old = json.loads(f.read_text())
+            if rc.planned_spec(old) != s:
+                raise RuntimeError(f"{f} exists with a different spec; use a new case id")
+            # keep a spec shifted by the mesh retry (see run_case)
+        else:
+            f.write_text(json.dumps(s, indent=2))
         rows.append({"case_id": s["case_id"], "base_id": s["base_id"],
                      "role": s["role"], "n_features": len(s["features"])})
     df = pd.DataFrame(rows)

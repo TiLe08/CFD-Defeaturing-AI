@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from geometry.families import f1_channel, f2_manifold, f4_pins  # noqa: E402
+from geometry.families import f1_channel, f2_manifold, f3_port, f4_pins  # noqa: E402
 from geometry.features import Feature  # noqa: E402
 from pipeline import sweep  # noqa: E402
 
@@ -66,6 +66,18 @@ Abzweige (Spalte `abzweig_ueber_feature`).
   Abzweige gehen durch den Plattenrand.
 - `fluid/`: der Strömungsraum.
 - Ebene x-y ist die Plattenebene, Tiefe in z.
+
+## F3_Einlass-Port
+
+Zulaufkanal (Höhe H), der mit einer Stufe (Höhe S) in die breitere Port-
+bzw. Sammelkammer übergeht. Hinter der Stufe löst die Strömung ab und legt
+einige Stufenhöhen weiter wieder an. Turbulent gerechnet (k-ω SST). Das
+Feature sitzt am Kammerboden hinter der Stufe, Abstand in Spalte
+`x_slot_over_S` (in Stufenhöhen).
+
+- `platte/`: das Bauteil um den Port, nach oben und unten geschlossen, am Ein- und Auslass offen.
+- `fluid/`: der Strömungsraum.
+- Strömung in +x, Kammerboden bei y = 0, Breite in z.
 
 ## F4_Pin-Flowfield
 
@@ -104,7 +116,7 @@ Datensätzen `dataset_*.parquet` aus der CFD-Rechnung, nicht in diesem
 Paket: Druckverlust (`dQ_rel`, `relevant_tau010`) und Wärmeübergang
 (`dNu_rel`, `relevant_th_tau010`).
 
-Weitere Familien (Port, 3D-Ausschnitt) und Realfälle
+Weitere Familien (3D-Ausschnitt) und Realfälle
 folgen.
 """
 
@@ -159,6 +171,31 @@ def f2_plate(p: f2_manifold.F2Params, feats: list[Feature]) -> trimesh.Trimesh:
     return trimesh.boolean.difference([plate, cut], engine="manifold")
 
 
+def f3_dims(p: f3_port.F3Params) -> dict:
+    """Port section in the plate: as F1 (lands of width H on both sides, floor H)."""
+    return {"w_ch": p.H, "land": p.H, "t": p.H}
+
+
+def f3_fluid(p: f3_port.F3Params, feats: list[Feature]) -> trimesh.Trimesh:
+    geom = f3_port.make_polygon(p, feats)
+    return trimesh.creation.extrude_polygon(geom.polygon, height=f3_dims(p)["w_ch"])
+
+
+def f3_plate(p: f3_port.F3Params, feats: list[Feature]) -> trimesh.Trimesh:
+    """Solid around the port: closed in y (floor and ceiling), open at inlet and outlet."""
+    d = f3_dims(p)
+    e = 0.05 * p.H
+    fluid = f3_port.make_polygon(p, feats).polygon
+    S = p.S * p.H
+    cut2d = unary_union([fluid, box(-e, S, p.H, p.y_top), box(p.L - p.H, 0.0, p.L + e, p.y_top)])
+    cut2d = Polygon(np.round(np.asarray(cut2d.exterior.coords), 12)).simplify(0)
+    cut = trimesh.creation.extrude_polygon(cut2d, height=d["w_ch"])
+    cut.apply_translation([0.0, 0.0, d["land"]])
+    plate = trimesh.creation.box(bounds=[[0.0, -d["t"], 0.0],
+                                         [p.L, p.y_top + d["t"], 2 * d["land"] + d["w_ch"]]])
+    return trimesh.boolean.difference([plate, cut], engine="manifold")
+
+
 def f4_dims(p: f4_pins.F4Params) -> dict:
     """Pin field milled into the plate surface: depth, wall margin, floor."""
     return {"depth": p.H, "margin": p.H, "t": p.H}
@@ -191,6 +228,9 @@ FAMILIES = {
     "F2": {"designs": ("f2", "f2x"), "folder": "F2_Verteiler", "bauteil": "Verteiler (Manifold) mit Kanalabgängen",
            "params": f2_manifold.F2Params, "platte": f2_plate, "fluid": f2_fluid,
            "width_mm": lambda p: f2_dims(p)["depth"] * MM},
+    "F3": {"designs": ("f3",), "folder": "F3_Einlass-Port", "bauteil": "Einlass-Port mit Stufe (Zelle/Stack)",
+           "params": f3_port.F3Params, "platte": f3_plate, "fluid": f3_fluid,
+           "width_mm": lambda p: f3_dims(p)["w_ch"] * MM},
     "F4": {"designs": ("f4",), "folder": "F4_Pin-Flowfield", "bauteil": "Pin-Flowfield (Bipolarplatte)",
            "params": f4_pins.F4Params, "platte": f4_plate, "fluid": f4_fluid,
            "width_mm": lambda p: f4_dims(p)["depth"] * MM},
@@ -233,6 +273,8 @@ def export(families: list[str], out: Path, designs: dict | None = None) -> pd.Da
                 "Re": spec["flow"]["Re"], "H_mm": p.H * MM, "L_mm": p.L * MM,
                 "tiefe_bzw_breite_mm": fam["width_mm"](p),
             }
+            if fam_id == "F3":
+                row.update(S_over_H=p.S, x_slot_over_S=p.x_slot)
             if fam_id == "F4":
                 row.update(pin_a_over_H=p.a, pitch_over_H=p.pitch, n_pins=len(p.pins()))
             if fam_id == "F2":

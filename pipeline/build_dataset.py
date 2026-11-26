@@ -100,7 +100,8 @@ def build(raw: Path) -> pd.DataFrame:
             row = {"feature_id": spec["case_id"], "base_id": base_id,
                    "family": spec["family"], "kind": f.kind,
                    "case_with": spec["case_id"],
-                   "case_without": ref["spec"]["case_id"] if ref else None}
+                   "case_without": ref["spec"]["case_id"] if ref else None,
+                   "mesh_retry": spec.get("mesh_retry", {}).get("k", 0)}
             reason = exclusion_reason(c) or exclusion_reason(ref) or exclusion_reason(coarse)
             L_ref, nu, U = reference_length(spec), spec["flow"]["nu"], spec["flow"]["U"]
             if ref is not None and ref["result"] is not None:
