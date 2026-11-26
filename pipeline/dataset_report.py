@@ -54,7 +54,9 @@ def report(raw: Path, design: str, out_parquet: Path) -> str:
         lines.append(f"| {kind} | {len(g)} | " + " | ".join(cells) + " |")
     lines.append("")
 
-    if "dNu_rel" in ok:
+    if "dNu_rel" in ok and ok.dNu_rel.isna().all():
+        lines += ["Keine Temperaturrechnung (bei dieser Familie abgeschaltet, z. B. F3 turbulent).", ""]
+    elif "dNu_rel" in ok:
         okt = ok[ok.dNu_rel.notna() & ok.get("excluded_th", pd.Series(index=ok.index)).isna()]
         lines += ["## Klassenbalance Wärmeübergang (Nusselt-Zahl)", "",
                   f"{len(okt)} Features mit gültiger Temperaturrechnung.", "",
@@ -72,7 +74,7 @@ def report(raw: Path, design: str, out_parquet: Path) -> str:
     lines += ["## Wertebereiche", "",
               "| Größe | Min | Median | Max |", "| --- | --- | --- | --- |"]
     for col in ("Re", "h_over_L", "w_over_L", "h_plus", "h_over_delta", "dQ_rel", "dNu_rel"):
-        if col not in ok:
+        if col not in ok or ok[col].isna().all():
             continue
         s = ok[col]
         lines.append(f"| {col} | {s.min():.3g} | {s.median():.3g} | {s.max():.3g} |")
