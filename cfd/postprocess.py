@@ -136,7 +136,7 @@ def wall_data(case: Path, mesh: foamio.Mesh, patch: str, nu: float) -> tuple[pd.
     idx = list(mesh.patch_faces(patch))
     fc = mesh.face_centres(idx)
     p, _ = foamio.read_field(t / "p")
-    df = pd.DataFrame({"x": fc[:, 0], "y": fc[:, 1],
+    df = pd.DataFrame({"x": fc[:, 0], "y": fc[:, 1], "z": fc[:, 2],
                        "p": _patch_owner_values(mesh, p, patch)[:, 0]})
     f_tau = t / "wallShearStress"
     if f_tau.exists():
@@ -158,12 +158,17 @@ def wall_data(case: Path, mesh: foamio.Mesh, patch: str, nu: float) -> tuple[pd.
     return df.sort_values("x").reset_index(drop=True), source
 
 
-def profile(case: Path, mesh: foamio.Mesh, x: float, d_bg: float) -> pd.DataFrame:
-    """Velocity in the cell column closest to x (for the boundary-layer edge)."""
+def profile(case: Path, mesh: foamio.Mesh, x: float, d_bg: float,
+            z: float | None = None) -> pd.DataFrame:
+    """Velocity in the cell column closest to x (for the boundary-layer edge).
+    3D: only the cells near the mid-plane z."""
     t = latest_time(case)
     U, _ = foamio.read_field(t / "U")
     cc = mesh.cell_centres
-    sel = np.flatnonzero(np.abs(cc[:, 0] - x) < d_bg)
+    near = np.abs(cc[:, 0] - x) < d_bg
+    if z is not None:
+        near &= np.abs(cc[:, 2] - z) < d_bg
+    sel = np.flatnonzero(near)
     df = pd.DataFrame({"y": cc[sel, 1], "dx": np.abs(cc[sel, 0] - x),
                        "Ux": U[sel, 0], "Uy": U[sel, 1]})
     df["yk"] = df.y.round(12)
@@ -245,7 +250,7 @@ def thermal_result(case: Path, mesh: foamio.Mesh, H: float, L_heat: float,
 # --------------------------------------------------------------------------
 
 def collect(case: Path, spec: dict, d_bg: float, slot_x: float,
-            thermal: dict | None = None) -> dict:
+            thermal: dict | None = None, slot_z: float | None = None) -> dict:
     """Assemble result.json for a solved case and export wall/profile CSVs."""
     case = Path(case)
     sol = parse_solver_log((case / "log.simpleFoam").read_text())
@@ -266,7 +271,7 @@ def collect(case: Path, spec: dict, d_bg: float, slot_x: float,
     for patch in ("bottomWall", "topWall"):
         df, tau_source = wall_data(case, mesh, patch, nu)
         df.to_csv(case / f"wall_{patch}.csv", index=False)
-    profile(case, mesh, slot_x, d_bg).to_csv(case / "profile_slot.csv", index=False)
+    profile(case, mesh, slot_x, d_bg, slot_z).to_csv(case / "profile_slot.csv", index=False)
     th = {}
     if thermal is not None and (case / "thermal" / "log.scalarTransportFoam").exists():
         th, wall_th = thermal_result(case, mesh, **thermal, nu=nu)

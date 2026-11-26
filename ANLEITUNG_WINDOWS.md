@@ -95,6 +95,14 @@ Hier beantwortet ein Sprachmodell (LLM) auf deiner Grafikkarte für jedes Featur
 
 Meldet das Fenster „Datensatz fehlt“, dann fehlt eine Datei `dataset_….parquet`. Lege sie in einen beliebigen Unterordner von `CFD-Ergebnisse` und starte neu.
 
+## Schritt 10: F5-Datensatz rechnen (ca. 30–60 Minuten)
+
+Das ist der Datensatz für F5, einen echten 3D-Abschnitt eines Bipolarplatten-Kanals (etwa 70 Rechnungen, laminar, mit Loch, Pin, Nut-Stück und Rippen-Stück). Hier gibt es nur den Druck, keine Temperatur. Jede Rechnung ist größer als in 2D, das Fenster braucht deshalb länger pro Fall.
+
+1. Doppelklick auf `10_F5_Datensatz_rechnen`.
+2. Das Fenster offen lassen, bis `FERTIG` erscheint. Danach öffnet sich ein Ordner `CFD-Ergebnisse\f5_<Datum>`.
+3. Aus diesem Ordner die beiden Dateien `fuer_claude.txt` und `dataset_f5.parquet` an Claude schicken.
+
 ## Wenn etwas schiefgeht
 
 Schick Claude einfach den Text aus dem Fenster: mit der Maus markieren, Strg+C, im Chat einfügen. Ein Foto vom Bildschirm geht auch. Häufige Fälle:

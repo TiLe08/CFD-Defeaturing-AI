@@ -89,3 +89,13 @@ def test_gci_recovers_second_order():
 def test_gci_flags_oscillation():
     g = gci((1.0, 1.1, 0.95), (4, 2, 1))
     assert g["oscillatory"] and g["u_abs"] == pytest.approx(0.075)
+
+
+def test_cell_count_includes_inner_cell_that_owns_no_face(tmp_path):
+    # in 3D the highest cell can be fully inner: it only appears as neighbour
+    pm = tmp_path / "constant" / "polyMesh"
+    pm.mkdir(parents=True)
+    head = "FoamFile { version 2.0; format ascii; class labelList; object x; }\n"
+    (pm / "owner").write_text(head + "3(0 0 1)\n")
+    (pm / "neighbour").write_text(head + "2(1 2)\n")
+    assert foamio.Mesh(tmp_path).n_cells == 3

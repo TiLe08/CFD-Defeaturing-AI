@@ -40,10 +40,11 @@ Die Ergebnisse von Claudes Testlauf liegen in `docs/ap2_testlauf_claude_v1912.md
 | F2 Verteiler (Manifold) mit vier Abzweigen, Feature am Boden unter einem Abzweig (Re 20–500, b/H 0,3–1, Teilung 1,5–3 H) | `geometry/families/f2_manifold.py`, `--design f2` (20 Basen × 8 Features) | Probelauf und Sandbox-Lauf |
 | F3 Einlass-Port: Zulaufkanal mit Stufe in die Kammer (rückwärtige Stufe), turbulent mit k-ω SST und Wandfunktionen (Spalding), Stufenkante mit Radius 0,05 H, Feature am Kammerboden 1–12 Stufenhöhen hinter der Stufe; Zielgröße Totaldruckverlust; Re 5·10³–3·10⁴, S/H 0,5–2, alle sieben Feature-Typen, keine Temperatur | `geometry/families/f3_port.py`, `cfd/templates/f3_port/`, `--design f3` (20 Basen × 10 Features) | Probelauf und Sandbox-Lauf |
 | F4 Pin-Flowfield: zwei versetzte Reihen quadratischer Pins (Ecken r = 0,1 H) zwischen Seitenwänden, Feature an der Seitenwand unter einem Pin (Re 10–60, a/H 0,5–1, Teilung 1,5–3 H, alle sieben Feature-Typen) | `geometry/families/f4_pins.py`, `--design f4` (20 Basen × 10 Features) | Probelauf und Sandbox-Lauf |
+| F5 Bipolarplatten-Kanal in 3D: Rechteckkanal (Breite W/H 1–3), ein Feature am Boden in Kanalmitte (Loch, Pin, Nut-Stück, Rippen-Stück mit Spannweite b), laminar, Re 20–200, h/H 0,1–0,5, keine Temperatur | `geometry/families/f5_duct.py`, `cfd/templates/f5_duct/`, `--design f5` (8 Basen × 6 Features) | Probelauf |
 | Wärmeübergang: Temperatur als passiver Skalar auf dem fertigen Strömungsfeld (`scalarTransportFoam`), Feature-Wand isotherm, andere Wände adiabat, Pr = 3 (Wasser, 60–80 °C); Zielgröße Nusselt-Zahl, eigenes Label `relevant_th_tau*` | `cfd/templates/f1_channel/thermal/`, `cfd/postprocess.py` | F1 und F2; ca. +20 % Rechenzeit |
 | STL-Paket der Elektrolyseur-Modelle (Platte und Fluidraum, mm) | `pipeline/export_models.py` | F1 und F2 |
 
-Unter Windows: `windows/5_F1_Datensatz_rechnen.bat`, `6_F2_...` und `7_F4_...` und `8_F3_...` (rufen `scripts/run_design.sh f1_alle`, `f2_alle`, `f4` bzw. `f3` auf), `9_LLM_auswerten.bat` ruft `scripts/run_llm.sh` auf (L0/L1 mit Ollama). Fälle, die vor der Temperaturrechnung gerechnet wurden, bekommen beim nächsten Start nur den Temperaturschritt nachgerechnet.
+Unter Windows: `windows/5_F1_Datensatz_rechnen.bat`, `6_F2_...` und `7_F4_...`, `8_F3_...` und `10_F5_...` (rufen `scripts/run_design.sh f1_alle`, `f2_alle`, `f4`, `f3` bzw. `f5` auf), `9_LLM_auswerten.bat` ruft `scripts/run_llm.sh` auf (L0/L1 mit Ollama). Fälle, die vor der Temperaturrechnung gerechnet wurden, bekommen beim nächsten Start nur den Temperaturschritt nachgerechnet.
 
 ## Einrichtung (WSL2/Ubuntu)
 
@@ -112,13 +113,14 @@ Claudes Umgebung hat nur OpenFOAM v1912 aus dem Ubuntu-Paket. Dort brechen alle 
 - **F3 Stufenkante gerundet (r = 0,05 H):** Mit scharfer Kante erzeugte snappyHexMesh an der konvexen Ecke schiefe Flächen (checkMesh-Fehler in 154 von 200 Features des ersten Sandbox-Laufs, je nach Stufenhöhe). Der Radius ist klein gegen die Stufenhöhe (≥ 0,5 H), die Ablösung bleibt an der Kante.
 - **Netz-Wiederholung mit verschobenem Feature:** Scheitert checkMesh bei einem Fall mit Feature (meist ein bis zwei leicht schiefe Wandflächen am Fuß des Features, Schiefe 4–11), wird das Feature um H/400 (1 % einer feinen Zelle) verschoben und neu vernetzt, höchstens dreimal (+1, −1, +2 Schritte). Die Fläche hängt chaotisch von der genauen Lage ab: dasselbe Feature besteht in F1 oder bei halbem H. Die verschobene Lage steht in `spec.json` (`mesh_retry`), Labels und Deskriptoren gehören also zur gerechneten Geometrie; `mesh_retry` ist eine Spalte im Datensatz.
 - **F3 ohne Temperatur:** `scalarTransportFoam` kennt keine turbulente Diffusivität. Ein turbulentes Wärmeübergangsmodell (Pr_t, thermische Wandfunktion) wäre ein eigener Validierungsschritt. Es wird als Grenze im Bericht genannt.
+- **F5 mit einer Verfeinerungsstufe weniger im Feature-Kasten:** Ein Kasten der Stufe 2 über die ganze Kanalbreite ergäbe etwa 300 000 Zellen je Fall. Mit Stufe 1 sind es etwa 177 000 Zellen und rund 2 Minuten je Fall; deshalb h ≥ 0,1 H (zwei Zellen). Die Linien-Deskriptoren werden auf einem Bodenstreifen um die Kanalmitte ausgewertet, der Kraftanteil über die Grundfläche des Features.
 - **F1-Klassenbalance:** Rippen sind meist relevant, Nuten selten. Die Bereiche bleiben, Metriken werden zusätzlich je Typ berichtet (Entscheidung Tim, 12.11.2026).
 
 ## Struktur
 
 ```
-geometry/    features.py, families/f1_channel.py, families/f2_manifold.py, families/f3_port.py, families/f4_pins.py, families/a1_naca.py
-cfd/         templates/f1_channel/, templates/f3_port/, templates/a1_naca/, run_case.py, case_a1.py, mesh_gmsh.py,
+geometry/    features.py, families/f1_channel.py, families/f2_manifold.py, families/f3_port.py, families/f4_pins.py, families/f5_duct.py, families/a1_naca.py
+cfd/         templates/f1_channel/, templates/f3_port/, templates/f5_duct/, templates/a1_naca/, run_case.py, case_a1.py, mesh_gmsh.py,
              postprocess.py, foamio.py
 descriptors/ geometric.py, flow.py
 pipeline/    sweep.py (Design + Batch), build_dataset.py, ap2_report.py (Gate 1),
@@ -129,4 +131,4 @@ env/         environment.yml, requirements.txt
 data/        raw/, processed/ (nicht in git)
 ```
 
-Noch nicht enthalten: F3–F5, Realfälle, Modelle und Evaluation (AP6).
+Noch nicht enthalten: Realfälle (R1–R3).

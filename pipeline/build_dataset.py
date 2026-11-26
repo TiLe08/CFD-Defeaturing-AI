@@ -24,6 +24,7 @@ if str(ROOT) not in sys.path:
 from descriptors.flow import flow_descriptors  # noqa: E402
 from descriptors.geometric import geometric_descriptors  # noqa: E402
 from geometry.features import Feature  # noqa: E402
+from geometry.families import f5_duct  # noqa: E402
 
 TAUS = (0.005, 0.01, 0.02)
 TH_RES_MAX = 1e-5  # final residual of T (see cfd.run_case.THERMAL_DEFAULTS)
@@ -82,7 +83,30 @@ def wall_tables(case_dir: Path, spec: dict, f: Feature):
         wall = sides[f.wall]
         return wall[wall.x >= 0.02 * c], list(sides.values()), 0.1 * c
     walls = {n: pd.read_csv(case_dir / f"wall_{n}.csv") for n in ("bottomWall", "topWall")}
+    if spec["family"] == "F5":
+        # 3D: line quantities on the floor strip through the feature centre
+        # (one background cell wide); the force share uses the whole walls
+        H = spec["params"]["H"]
+        zc = 0.5 * spec["params"]["W"] * H
+        d = H / spec["mesh"]["n_per_H"]
+        floor = walls["bottomWall"]
+        strip = floor[(floor.z - zc).abs() < 0.5 * d]
+        return strip, list(walls.values()), 0.5 * H
     return walls["bottomWall"], list(walls.values()), 0.5 * spec["params"]["H"]
+
+
+def force_frac_3d(f, case_dir: Path, spec: dict) -> float:
+    """Friction force on the feature footprint / force on all walls (F5),
+    with the same lead-region scaling as the 2D definition."""
+    from descriptors.flow import feature_window
+    walls = [pd.read_csv(case_dir / f"wall_{n}.csv") for n in ("bottomWall", "topWall")]
+    zc = 0.5 * spec["params"]["W"] * spec["params"]["H"]
+    x0, x1 = feature_window(f)
+    floor = walls[0]
+    win = floor[(floor.x >= x0) & (floor.x <= x1) & ((floor.z - zc).abs() <= 0.5 * f.span)]
+    fw = float(np.sum(np.hypot(win.tau_x, win.tau_y) * win.area))
+    fa = float(sum(np.sum(np.hypot(w.tau_x, w.tau_y) * w.area) for w in walls))
+    return fw / fa * (f.w / (x1 - x0))
 
 
 def build(raw: Path) -> pd.DataFrame:
@@ -96,7 +120,8 @@ def build(raw: Path) -> pd.DataFrame:
         coarse = (roles.get("base_coarse") or [None])[0]
         for c in roles.get("with", []):
             spec = c["spec"]
-            f = Feature.from_dict(spec["features"][0])
+            is3d = spec["family"] == "F5"
+            f = (f5_duct.Feature3D if is3d else Feature).from_dict(spec["features"][0])
             row = {"feature_id": spec["case_id"], "base_id": base_id,
                    "family": spec["family"], "kind": f.kind,
                    "case_with": spec["case_id"],
@@ -106,7 +131,12 @@ def build(raw: Path) -> pd.DataFrame:
             L_ref, nu, U = reference_length(spec), spec["flow"]["nu"], spec["flow"]["U"]
             if ref is not None and ref["result"] is not None:
                 wl = json.loads((ref["dir"] / "geometry.json").read_text())["wetted_length"]
-                row.update(geometric_descriptors(f, L_ref, wl, U * L_ref / nu))
+                if is3d:
+                    wa = json.loads((ref["dir"] / "geometry.json").read_text())["wetted_area"]
+                    row.update(f5_duct.geometric_descriptors_3d(
+                        f, f5_duct.F5Params(**spec["params"]), wa, U * L_ref / nu))
+                else:
+                    row.update(geometric_descriptors(f, L_ref, wl, U * L_ref / nu))
             if coarse is not None and coarse["result"] is not None:
                 prof_f = coarse["dir"] / "profile_slot.csv"
                 prof = pd.read_csv(prof_f) if prof_f.exists() else None
@@ -114,6 +144,8 @@ def build(raw: Path) -> pd.DataFrame:
                     wall, all_walls, cap = wall_tables(coarse["dir"], coarse["spec"], f)
                     row.update(flow_descriptors(f, wall, all_walls, prof, nu, U, L_ref,
                                                 delta_cap=cap))
+                    if is3d:
+                        row["force_frac"] = force_frac_3d(f, coarse["dir"], coarse["spec"])
                 except ValueError as exc:
                     reason = reason or f"descriptor: {exc}"
             if c["result"] is not None and ref is not None and ref["result"] is not None:

@@ -144,3 +144,38 @@ def test_failed_mesh_retries_with_shifted_feature(tmp_path, monkeypatch):
     # after the last shift no further retry
     new["mesh_retry"]["k"] = len(rc.MESH_SHIFTS)
     assert not rc._may_shift(new)
+
+
+def test_duct_case_is_3d_with_walls_off_background_faces(tmp_path):
+    spec = next(s for s in sweep.design_f5_trial() if s["role"] == "with")
+    (tmp_path / "spec.json").write_text(json.dumps(spec))
+    rc.run_case(tmp_path, build_only=True)
+    for f in tmp_path.rglob("*"):
+        if f.is_file() and f.suffix != ".stl":
+            assert "{{" not in f.read_text(), f
+    steps = rc.steps_for(spec)
+    assert not {"extrudeMesh", "fix2D", "scalarTransport"} & set(steps)
+    lay = rc.mesh_layout(spec)
+    p = rc.family_params(spec)
+    d = lay["_d"]
+    assert lay["NZ"] > 1
+    for z in (0.0, p.z_width):  # side walls must not coincide with background faces
+        frac = ((z - lay["Z0"]) / d) % 1
+        assert 0.05 < frac < 0.95
+
+
+def test_f5_design_geometries_are_valid():
+    from geometry.families import f5_duct
+
+    specs = sweep.design_f5_lhs()
+    kinds = set()
+    for s in specs:
+        if s["role"] != "with":
+            continue
+        p = f5_duct.F5Params(**s["params"])
+        f = f5_duct.parse_features(s["features"])[0]
+        mesh = f5_duct.make_mesh(p, [f])  # raises if the domain breaks
+        assert abs(abs(mesh.volume - p.L * p.H * p.z_width) - f.volume()) < 0.01 * f.volume()
+        assert 0.1 * p.H - 1e-12 <= f.h <= 0.5 * p.H + 1e-12
+        kinds.add(f.kind)
+    assert kinds == set(f5_duct.F5_KINDS)

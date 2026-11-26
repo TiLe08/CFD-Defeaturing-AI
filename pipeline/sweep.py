@@ -494,6 +494,112 @@ def design_f3_lhs(n_base: int = 20, k: int = 10, seed: int = F3_SEED) -> list[di
     return specs
 
 
+# F5 (3D section of a bipolar plate channel, laminar). One refinement level
+# less in the box than the 2D families: a level-2 box over the full width
+# would give about 300 000 cells per case. Therefore h >= 0.1 H (2 cells).
+F5_MESH_FINE = dict(F1_MESH_FINE, level_box=1)
+F5_MESH_COARSE = dict(F1_MESH_COARSE)
+F5_SOLVER = dict(F1_SOLVER, max_iter=3000)
+F5_THERMAL = {"enabled": False}
+
+
+def _spec_f5(case_id, base_id, role, params, features, flow, mesh):
+    s = _spec(case_id, base_id, role, params, features, flow, mesh,
+              family="F5", template="f5_duct", thermal=dict(F5_THERMAL))
+    s["solver"] = dict(F5_SOLVER)
+    return s
+
+
+def design_f5_trial(Re: float = 100.0) -> list[dict]:
+    """F5 feasibility check: one 3D channel, four feature kinds, two heights."""
+    from dataclasses import asdict
+
+    from geometry.families.f5_duct import F5_KINDS, F5Params
+
+    p = F5Params()
+    params, H, nu = asdict(p), p.H, 1e-6
+    flow = {"U": Re * nu / H, "nu": nu, "Re": Re}
+    base = "f5_trial_b000"
+
+    def spec(cid, role, feats, mesh):
+        return _spec_f5(f"{base}_{cid}", base, role, params, feats, flow, mesh)
+
+    specs = [spec("without", "without", [], F5_MESH_FINE),
+             spec("base_coarse", "base_coarse", [], F5_MESH_COARSE),
+             spec("null_shift", "null_shift", [], dict(F5_MESH_FINE, box_shift=0.5))]
+    for kind in F5_KINDS:
+        for h in (0.1, 0.3):
+            f = {"kind": kind, "s": p.s_slot, "w": 0.8 * H, "h": h * H, "b": 1.0 * H}
+            specs.append(spec(f"with_{kind}_h{h:g}", "with", [f], F5_MESH_FINE))
+    return specs
+
+
+
+# F5 data set: Re 20-200 (laminar), width W/H 1-3, features on the floor with
+# h/H 0.1-0.5 (at least two cells), w/H 0.2-1.5 and spanwise length b/W
+# 0.3-0.8 for the rectangular kinds. Round kinds stay below 0.8 W. GCI on one
+# base only (n_per_H = 14 in 3D is about 500 000 cells).
+F5_RANGES = {"Re": (20.0, 200.0), "W_over_H": (1.0, 3.0), "h_over_H": (0.1, 0.5),
+             "w_over_H": (0.2, 1.5), "b_over_W": (0.3, 0.8)}
+F5_SEED = 2033
+
+
+def design_f5_lhs(n_base: int = 8, k: int = 6, seed: int = F5_SEED) -> list[dict]:
+    """F5 data set: Latin hypercube over channel width, Re and 3D features."""
+    from dataclasses import asdict
+
+    from scipy.stats import qmc
+
+    from geometry.families.f5_duct import F5_KINDS, ROUND, F5Params
+
+    R = F5_RANGES
+    nu = 1e-6
+    rng = np.random.default_rng(seed)
+    pts = qmc.LatinHypercube(d=2, seed=seed).random(n_base)
+
+    def lin(u, key):
+        return R[key][0] + u * (R[key][1] - R[key][0])
+
+    def log(u, key):
+        lo, hi = np.log10(R[key][0]), np.log10(R[key][1])
+        return 10 ** (lo + u * (hi - lo))
+
+    re_vals = log(pts[:, 0], "Re")
+    gci_base = int(np.argmin(re_vals))
+    specs = []
+    for bi, (_, u_w) in enumerate(pts):
+        p = F5Params(W=round(float(lin(u_w, "W_over_H")), 1))
+        params, H, Re = asdict(p), p.H, float(re_vals[bi])
+        flow = {"U": Re * nu / H, "nu": nu, "Re": Re}
+        base = f"f5_b{bi:03d}"
+
+        def spec(cid, role, feats, mesh):
+            return _spec_f5(f"{base}_{cid}", base, role, params, feats, flow, mesh)
+
+        specs += [spec("without", "without", [], F5_MESH_FINE),
+                  spec("base_coarse", "base_coarse", [], F5_MESH_COARSE)]
+        kind_list = _kinds(rng, rng.permutation(F5_KINDS), k)  # all kinds equally often
+        feats = []
+        for j, (u_h, u_ww, u_b, u_s) in enumerate(qmc.LatinHypercube(d=4, seed=seed + 1000 + bi).random(k)):
+            kind = str(kind_list[j])
+            h = lin(u_h, "h_over_H")
+            w = lin(u_ww, "w_over_H")
+            if kind in ROUND:
+                w = min(w, 0.8 * p.W)
+                b = w
+            else:
+                b = lin(u_b, "b_over_W") * p.W
+            s = p.s_slot + (u_s - 0.5) * (p.slot_w_max - w) * H
+            f = {"kind": kind, "s": float(s), "w": float(w * H), "h": float(h * H), "b": float(b * H)}
+            feats.append(f)
+            specs.append(spec(f"with_f{j}", "with", [f], F5_MESH_FINE))
+        if bi == gci_base:
+            for n in (7, 14):
+                m = dict(F5_MESH_FINE, n_per_H=n)
+                specs += [spec(f"gci_without_n{n}", "gci_without", [], m),
+                          spec(f"gci_with_n{n}", "gci_with", [feats[0]], m)]
+    return specs
+
 def design_f1x() -> list[dict]:
     """F1 with the new feature types: 15 bases x 10 features (2 per type)."""
     return design_f1_lhs(n_base=15, k=10, seed=2028, kinds=NEW_KINDS, prefix="f1x")
@@ -509,8 +615,8 @@ DESIGNS = {"ap2": design_ap2, "f1": design_f1_lhs, "f2": design_f2_lhs, "f2_tria
            # everything of one family in one run (used by the Windows scripts)
            "f1_alle": lambda: design_f1_lhs() + design_f1x(),
            "f2_alle": lambda: design_f2_lhs() + design_f2x(),
-           "f4_trial": design_f4_trial, "f4": design_f4_lhs, "f3_trial": design_f3_trial,
-           "f3": design_f3_lhs}
+           "f4_trial": design_f4_trial, "f5_trial": design_f5_trial, "f4": design_f4_lhs, "f3_trial": design_f3_trial,
+           "f3": design_f3_lhs, "f5": design_f5_lhs}
 
 
 def plan(specs: list[dict], out: Path) -> pd.DataFrame:
