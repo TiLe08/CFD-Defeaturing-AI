@@ -44,6 +44,7 @@ GEO = ["is_convex", "h_over_L", "w_over_L", "h_over_w", "area_frac", "fill_facto
 FLOW_ONLY = ["h_plus", "h_over_delta", "cp_local", "dpds_nd", "force_frac",
              "dist_sep_nd", "has_sep", "Re_h"]
 FLOW = GEO + FLOW_ONLY
+MODEL_SETS = {"M1_geo": GEO, "M1_flow": FLOW}  # name -> input columns
 GRID = [{"max_depth": d, "learning_rate": lr, "max_iter": 300, "min_samples_leaf": 10}
         for d, lr in itertools.product((2, 3), (0.05, 0.1))]
 
@@ -147,7 +148,7 @@ def evaluate_split(df, y, train, test, inner_groups, rng) -> tuple[list, dict]:
         keep[name] = df.loc[test, col].to_numpy() >= t
         rows.append({"model": name, "threshold": t, **metrics(yte, keep[name])})
     importance = {}
-    for name, cols in (("M1_geo", GEO), ("M1_flow", FLOW)):
+    for name, cols in MODEL_SETS.items():
         Xtr, Xte = df.loc[train, cols].to_numpy(float), df.loc[test, cols].to_numpy(float)
         model, t, params = fit_m1(Xtr, ytr, inner_groups)
         p = model.predict_proba(Xte)[:, 1]
@@ -218,7 +219,7 @@ def run_lofo(df, target="dp", tau=0.010) -> tuple[pd.DataFrame, pd.DataFrame]:
         for row in r:
             row.update(fold=f, scheme="LOFO")
             if row["model"].startswith("M1"):
-                cols = GEO if row["model"] == "M1_geo" else FLOW
+                cols = MODEL_SETS[row["model"]]
                 row["mae_dq"] = regression_mae(df, train, test, cols, tcol)
         rows += r
         extra.append({"fold": f, "spec_diff_M1flow_B1_ci_lo": lo, "spec_diff_M1flow_B1_ci_hi": hi,
@@ -231,7 +232,7 @@ def run_in_distribution(df, target="dp", tau=0.010, n_splits: int = 5) -> pd.Dat
     rng = np.random.default_rng(SEED + 1)
     y = label(df, target, tau).to_numpy()
     bases = df.base_id.to_numpy()
-    keep = {m: np.zeros(len(df), bool) for m in ("B0", "B1", "M1_geo", "M1_flow")}
+    keep = {m: np.zeros(len(df), bool) for m in ("B0", "B1", *MODEL_SETS)}
     gkf = GroupKFold(n_splits=n_splits)
     for tr, te in gkf.split(df, y, bases):
         train = np.isin(np.arange(len(df)), tr)

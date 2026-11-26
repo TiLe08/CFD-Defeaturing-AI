@@ -49,3 +49,19 @@ def test_run_all_on_synthetic_data(tmp_path, monkeypatch):
     assert (tmp_path / "out" / "auswertung_dp_tau010.md").exists()
     # family is never an input
     assert "family" not in ev.FLOW and "kind" not in ev.FLOW
+
+
+def test_explore_h2_variants_run_and_restore(tmp_path, monkeypatch):
+    from models import explore_h2
+    files = _synthetic(tmp_path)
+    frames = [pd.read_parquet(tmp_path / f"{f}.parquet") for f in files]
+    pd.concat(frames).query("family == 'F1'").to_parquet(tmp_path / "dataset_f1_alle.parquet")
+    for f, name in zip(files[1:], ("dataset_f2_alle", "dataset_f3", "dataset_f4")):
+        pd.read_parquet(tmp_path / f"{f}.parquet").to_parquet(tmp_path / f"{name}.parquet")
+    monkeypatch.setattr(ev, "GRID", ev.GRID[:1])
+    monkeypatch.setattr(ev, "N_BOOT", 100)
+    monkeypatch.setattr(ev, "MODEL_SETS", dict(ev.MODEL_SETS))
+    res = explore_h2.run(tmp_path, tmp_path / "out", taus=(0.010,))
+    assert set(explore_h2.VARIANTS) <= set(res.model)
+    assert "Re" not in explore_h2.VARIANTS["M1_flow_norm"]
+    assert (tmp_path / "out" / "h2_explorativ.md").exists()

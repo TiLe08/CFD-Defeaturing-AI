@@ -89,3 +89,54 @@ Verfahren nach docs/auswertungsprotokoll.md. Schwelle auf den Trainingsfamilien 
 | F2 | 0.0389 | 0.0292 |
 | F3 | 0.0651 | 0.3544 |
 | F4 | 0.0171 | 0.0344 |
+
+## Abweichung 1: H2 explorativ (normierte Strömungsgrößen)
+
+Verfahren unverändert, nur andere Eingaben (`models/explore_h2.py`, Protokoll Abweichung 1).
+Die eingefrorenen Zahlen für M1_geo und M1_flow werden dabei exakt reproduziert.
+
+| τ | Modell | Spezifität LOFO | Recall LOFO | Spezifität innerhalb | Lücke |
+| --- | --- | --- | --- | --- | --- |
+| 0.5% | B0 | 14% | 96% | 13% | -1 pp |
+| 0.5% | B1 | 17% | 94% | 17% | -1 pp |
+| 0.5% | M1_flow | 70% | 92% | 81% | +12 pp |
+| 0.5% | M1_flow_noRe | 66% | 92% | 81% | +14 pp |
+| 0.5% | M1_flow_norm | 74% | 90% | 80% | +6 pp |
+| 0.5% | M1_geo | 61% | 94% | 70% | +9 pp |
+| 0.5% | M1_geo_noRe | 56% | 92% | 67% | +11 pp |
+| 1.0% | B0 | 25% | 95% | 25% | +0 pp |
+| 1.0% | B1 | 27% | 96% | 27% | -0 pp |
+| 1.0% | M1_flow | 53% | 97% | 83% | +30 pp |
+| 1.0% | M1_flow_noRe | 57% | 93% | 83% | +25 pp |
+| 1.0% | M1_flow_norm | 63% | 94% | 82% | +19 pp |
+| 1.0% | M1_geo | 61% | 92% | 69% | +7 pp |
+| 1.0% | M1_geo_noRe | 57% | 92% | 72% | +16 pp |
+| 2.0% | B0 | 43% | 95% | 42% | -1 pp |
+| 2.0% | B1 | 37% | 93% | 36% | -1 pp |
+| 2.0% | M1_flow | 71% | 95% | 85% | +14 pp |
+| 2.0% | M1_flow_noRe | 71% | 95% | 85% | +14 pp |
+| 2.0% | M1_flow_norm | 75% | 95% | 84% | +10 pp |
+| 2.0% | M1_geo | 73% | 96% | 80% | +8 pp |
+| 2.0% | M1_geo_noRe | 77% | 96% | 81% | +5 pp |
+
+LOFO je Testfamilie bei τ = 1 %, Spezifität (Recall):
+
+| Testfamilie | M1_geo | M1_flow | M1_flow_norm |
+| --- | --- | --- | --- |
+| F1 | 46 % (100 %) | 35 % (100 %) | 49 % (99 %) |
+| F2 | 57 % (96 %) | 61 % (96 %) | 57 % (96 %) |
+| F3 | 69 % (86 %) | 47 % (92 %) | 68 % (92 %) |
+| F4 | 74 % (84 %) | 70 % (98 %) | 78 % (88 %) |
+
+Stichpunkte:
+
+- Ohne die absoluten Regimegrößen steigt die LOFO-Spezifität von M1_flow bei τ = 1 % von
+  53 % auf 63 % (M1_flow_norm), die Lücke sinkt von +30 auf +19 pp. Die Vermutung zur
+  Ursache wird damit gestützt.
+- H2 bleibt trotzdem widerlegt: auch normiert ist die Lücke größer als die halbe Lücke von
+  M1_geo (+7 pp), und M1_geo ohne Re hat eine ähnliche Lücke (+16 pp).
+- M1_flow_norm erreicht auf F3 dieselbe Spezifität wie M1_geo (68 % gegen 69 %), hält aber
+  den Recall besser (92 % gegen 86 %). Der Nutzen der Strömungsgrößen liegt eher in der
+  Sicherheit als in der Einsparung.
+- Die Recall-Vorgabe 0,95 auf den Trainingsfamilien überträgt sich nicht sicher auf neue
+  Familien (Test-Recall 86–100 %). Das ist für H4 und den Bericht (Grenzen) wichtig.

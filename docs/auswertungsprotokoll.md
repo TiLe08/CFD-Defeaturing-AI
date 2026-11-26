@@ -72,3 +72,11 @@ L0/L1 (LLM, läuft lokal mit Ollama auf Tims Laptop), F5 und R1–R3 folgen.
 ## Aufruf
 
     python -m models.evaluate --data <Ordner mit dataset_*.parquet> --out results/ap6
+
+## Abweichung 1 (26.11.2026, explorativ)
+
+Grund: H2 wurde im eingefrorenen Lauf widerlegt, vermutete Ursache sind absolute
+Regimegrößen (Re, Re_h, h⁺) mit familienweise verschiedenen Wertebereichen.
+Zusätzliche Eingabesätze ohne Re/Re_h bzw. mit u_τ/U = h⁺ / (h/L · Re) statt h⁺, Re
+und Re_h, sonst identisches Verfahren (`models/explore_h2.py`). Die Ergebnisse
+werden nur als explorativ berichtet und ersetzen nicht den Test von H2.
