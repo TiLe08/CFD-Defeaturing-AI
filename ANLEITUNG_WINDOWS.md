@@ -8,7 +8,7 @@ Was im Hintergrund passiert: OpenFOAM läuft nur unter Linux. Windows bringt daf
 
 1. Die ZIP-Datei `CFD-Start-Windows.zip` aus dem Projekt herunterladen. Alternativ auf https://github.com/TiLe08/CFD-Defeaturing-AI auf den grünen Knopf **Code** und dann **Download ZIP** klicken.
 2. Rechtsklick auf die ZIP-Datei, **Alle extrahieren…**, als Ziel z. B. `Dokumente` wählen.
-3. Den entpackten Ordner öffnen und darin den Ordner `windows`. Dort liegen die Dateien `1_WSL_installieren`, `2_Einrichten`, `3_AP2_rechnen`, `4_Defeaturing_Tool`, `5_F1_Datensatz_rechnen`, `6_F2_Datensatz_rechnen`, `7_F4_Datensatz_rechnen` und `8_F3_Datensatz_rechnen`.
+3. Den entpackten Ordner öffnen und darin den Ordner `windows`. Dort liegen die Dateien `1_WSL_installieren`, `2_Einrichten`, `3_AP2_rechnen`, `4_Defeaturing_Tool`, `5_F1_Datensatz_rechnen`, `6_F2_Datensatz_rechnen`, `7_F4_Datensatz_rechnen`, `8_F3_Datensatz_rechnen` und `9_LLM_auswerten`.
 
 Falls Windows beim Doppelklick „Der Computer wurde durch Windows geschützt“ meldet: auf **Weitere Informationen** und dann **Trotzdem ausführen** klicken. Die Skripte sind kurz und stehen offen im Repo.
 
@@ -83,6 +83,17 @@ Das ist der Datensatz für den Einlass-Port F3 (etwa 250 Rechnungen, turbulent, 
 1. Doppelklick auf `8_F3_Datensatz_rechnen`.
 2. Das Fenster offen lassen, bis `FERTIG` erscheint. Danach öffnet sich ein Ordner `CFD-Ergebnisse\f3_<Datum>`.
 3. Aus diesem Ordner die beiden Dateien `fuer_claude.txt` und `dataset_f3.parquet` an Claude schicken.
+
+## Schritt 9: LLM auswerten (ca. 2–4 Stunden)
+
+Hier beantwortet ein Sprachmodell (LLM) auf deiner Grafikkarte für jedes Feature die Frage „entfernen oder behalten?“, einmal ohne und einmal mit Beispielen. Gerechnet wird nichts Neues, das Skript nutzt die Datensätze aus den Schritten 5 bis 8.
+
+1. Doppelklick auf `9_LLM_auswerten`.
+2. Beim ersten Mal wird Ollama installiert. Dafür fragt das Fenster nach deinem Ubuntu-Passwort, danach lädt es das Modell (ca. 5 GB).
+3. Das Fenster offen lassen, bis `FERTIG` erscheint. Abbrechen ist möglich, ein neuer Start macht dort weiter. Danach öffnet sich ein Ordner `CFD-Ergebnisse\llm_<Datum>`.
+4. Aus diesem Ordner die Dateien `fuer_claude.txt` und `antworten_qwen2.5_7b.jsonl` an Claude schicken.
+
+Meldet das Fenster „Datensatz fehlt“, dann fehlt eine Datei `dataset_….parquet`. Lege sie in einen beliebigen Unterordner von `CFD-Ergebnisse` und starte neu.
 
 ## Wenn etwas schiefgeht
 

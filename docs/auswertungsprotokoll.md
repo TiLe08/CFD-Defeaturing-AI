@@ -67,7 +67,7 @@ direkt aus den Trainingsdaten. Auf der Testfamilie berichtet: Recall
 
 ## Nicht in diesem Teil
 
-L0/L1 (LLM, läuft lokal mit Ollama auf Tims Laptop), F5 und R1–R3 folgen.
+F5 und R1–R3 folgen. L0/L1 siehe Teil 2 unten.
 
 ## Aufruf
 
@@ -80,3 +80,22 @@ Regimegrößen (Re, Re_h, h⁺) mit familienweise verschiedenen Wertebereichen.
 Zusätzliche Eingabesätze ohne Re/Re_h bzw. mit u_τ/U = h⁺ / (h/L · Re) statt h⁺, Re
 und Re_h, sonst identisches Verfahren (`models/explore_h2.py`). Die Ergebnisse
 werden nur als explorativ berichtet und ersetzen nicht den Test von H2.
+
+## Teil 2: L0 und L1 (eingefroren am 26.11.2026, vor dem ersten LLM-Lauf)
+
+- Modell: `qwen2.5:7b` (Ollama, 4-Bit, passt in 8 GB VRAM), Temperatur 0, Seed fest,
+  höchstens 200 Antwort-Token, Kontext 4096. Andere Modelle nur als zusätzlicher Lauf.
+- Eingabe: dieselben Deskriptoren wie M1_flow als Text, nie Familie oder Feature-Typ.
+  Systemtext und Prompt stehen wörtlich in `models/llm.py`.
+- Antwort als JSON mit Entscheidung, ΔQ-Schätzung und Begründung. Ungültige Antworten
+  werden gezählt und als „behalten“ gewertet.
+- **L0:** ohne Beispiele, eine Abfrage je Feature.
+- **L1:** k = 5 nächste Nachbarn aus den Trainingsfamilien (standardisierter D_flow-Raum,
+  Mittelwert und Streuung nur aus den Trainingsfamilien) mit gemessenem ΔQ_rel. Drei
+  Wiederholungen mit permutierter Reihenfolge der Beispiele, Entscheidung per Mehrheit.
+  Berichtet werden zusätzlich die Spannweite der Spezifität über die Wiederholungen und
+  der Anteil der Features mit drei gleichen Antworten.
+- LOFO wie in Teil 1, Label Druck bei τ = 1 %. Die Entscheidung des LLM wird direkt
+  bewertet, ohne nachträglich gewählte Schwelle.
+- **H3:** bestätigt, wenn die mittlere Spezifität von L0 innerhalb ±5 Prozentpunkte von B1
+  liegt und L1 mindestens die Hälfte des Abstands L0 → M1_flow schließt.

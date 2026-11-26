@@ -43,7 +43,7 @@ Die Ergebnisse von Claudes Testlauf liegen in `docs/ap2_testlauf_claude_v1912.md
 | Wärmeübergang: Temperatur als passiver Skalar auf dem fertigen Strömungsfeld (`scalarTransportFoam`), Feature-Wand isotherm, andere Wände adiabat, Pr = 3 (Wasser, 60–80 °C); Zielgröße Nusselt-Zahl, eigenes Label `relevant_th_tau*` | `cfd/templates/f1_channel/thermal/`, `cfd/postprocess.py` | F1 und F2; ca. +20 % Rechenzeit |
 | STL-Paket der Elektrolyseur-Modelle (Platte und Fluidraum, mm) | `pipeline/export_models.py` | F1 und F2 |
 
-Unter Windows: `windows/5_F1_Datensatz_rechnen.bat`, `6_F2_...` und `7_F4_...` und `8_F3_...` (rufen `scripts/run_design.sh f1_alle`, `f2_alle`, `f4` bzw. `f3` auf). Fälle, die vor der Temperaturrechnung gerechnet wurden, bekommen beim nächsten Start nur den Temperaturschritt nachgerechnet.
+Unter Windows: `windows/5_F1_Datensatz_rechnen.bat`, `6_F2_...` und `7_F4_...` und `8_F3_...` (rufen `scripts/run_design.sh f1_alle`, `f2_alle`, `f4` bzw. `f3` auf), `9_LLM_auswerten.bat` ruft `scripts/run_llm.sh` auf (L0/L1 mit Ollama). Fälle, die vor der Temperaturrechnung gerechnet wurden, bekommen beim nächsten Start nur den Temperaturschritt nachgerechnet.
 
 ## Einrichtung (WSL2/Ubuntu)
 
