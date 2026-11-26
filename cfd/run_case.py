@@ -27,14 +27,16 @@ if str(ROOT) not in sys.path:
 
 from cfd import case_a1, postprocess  # noqa: E402
 from geometry.features import Feature  # noqa: E402
-from geometry.families import f1_channel, f2_manifold, f3_port, f4_pins  # noqa: E402
+from geometry.families import f1_channel, f2_manifold, f3_port, f4_pins, f5_duct  # noqa: E402
 
 # 2D families meshed with blockMesh + snappyHexMesh + extrudeMesh (template
 # f1_channel): geometry module and parameter class.
 SNAPPY_FAMILIES = {"F1": (f1_channel, f1_channel.F1Params),
                    "F2": (f2_manifold, f2_manifold.F2Params),
                    "F3": (f3_port, f3_port.F3Params),
-                   "F4": (f4_pins, f4_pins.F4Params)}
+                   "F4": (f4_pins, f4_pins.F4Params),
+                   "F5": (f5_duct, f5_duct.F5Params)}
+THREE_D = ("F5",)  # real 3D meshes: no extrusion, no 2D fix, no temperature
 
 TEMPLATES = ROOT / "cfd" / "templates"
 STEPS = ("blockMesh", "surfaceFeatureExtract", "snappyHexMesh", "extrudeMesh",
@@ -72,6 +74,12 @@ def mesh_layout(spec: dict) -> dict:
     y0 = -(math.ceil(y_low / d) + 2 + off) * d
     ny = math.ceil((p.y_top - y0 + 2 * d) / d)
     z0, z1 = 0.0, d
+    nz = 1
+    if spec.get("family") in THREE_D:
+        zw = p.z_width
+        z0 = -(2 + off) * d
+        nz = math.ceil((zw - z0 + 2 * d) / d)
+        z1 = z0 + nz * d
     bw = (0.5 * p.slot_w_max + 0.5) * H
     bh = (p.slot_h_max + 0.25) * H
     shift = m.get("box_shift", 0.0) * d
@@ -79,17 +87,18 @@ def mesh_layout(spec: dict) -> dict:
     return {
         "X0": x0, "X1": x0 + nx * d, "NX": nx,
         "Y0": y0, "Y1": y0 + ny * d, "NY": ny,
-        "Z0": z0, "Z1": z1,
+        "Z0": z0, "Z1": z1, "NZ": nz,
         "LEVEL_SURF": m["level_surf"],
         "LEVEL_BOX": m["level_box"] if box else 0,
         "BOX_X0": p.s_slot - bw + shift, "BOX_X1": p.s_slot + bw + shift,
-        "BOX_Y0": -bh, "BOX_Y1": bh, "BOX_Z0": z0 - d, "BOX_Z1": z1 + d,
+        "BOX_Y0": -bh, "BOX_Y1": bh, "BOX_Z0": z0 - d, "BOX_Z1": z1 + d,  # 3D: full width
         "LOC_X": getattr(p, "loc", (0.5 * p.L_up * H, 0.5 * H))[0] + 0.0123 * d,
         "LOC_Y": getattr(p, "loc", (0.5 * p.L_up * H, 0.5 * H))[1] + 0.0317 * d,
-        "LOC_Z": 0.4321 * d,
+        "LOC_Z": (0.5 * p.z_width + 0.0213 * d) if spec.get("family") in THREE_D else 0.4321 * d,
         "THICKNESS": d,
         "FLIP_NORMALS": "true" if m.get("flip_normals", True) else "false",
         "_d": d, "_stl_z": (z0 - d, z1 + d), "_slot_x": p.s_slot,
+        "_slot_z": 0.5 * p.z_width if spec.get("family") in THREE_D else None,
     }
 
 
@@ -105,6 +114,8 @@ def is_a1(spec: dict) -> bool:
 def steps_for(spec: dict) -> tuple[str, ...]:
     if is_a1(spec):
         return case_a1.STEPS
+    if spec.get("family") in THREE_D:
+        return tuple(s for s in STEPS if s not in ("extrudeMesh", "fix2D", "scalarTransport"))
     if not thermal_settings(spec).get("enabled", True):
         return tuple(s for s in STEPS if s != "scalarTransport")
     return STEPS
@@ -161,7 +172,8 @@ def build_case(case: Path, spec: dict) -> None:
         return
     module = SNAPPY_FAMILIES[spec.get("family", "F1")][0]
     p = family_params(spec)
-    feats = [Feature.from_dict(f) for f in spec["features"]]
+    parse = getattr(module, "parse_features", lambda fs: [Feature.from_dict(f) for f in fs])
+    feats = parse(spec["features"])
     z0, z1 = mesh_layout(spec)["_stl_z"]
     _, regions, meta = module.build(p, feats, z0, z1)
     tri = case / "constant" / "triSurface"
@@ -296,7 +308,7 @@ def run_step(case: Path, step: str, spec: dict, bashrc: str | None,
         ts = thermal_settings(spec)
         thermal = {"H": p.H, "L_heat": p.L, "Pr": ts["Pr"], "res_T": ts["res_T"]}
         res = postprocess.collect(case, spec, d_bg=lay["_d"], slot_x=lay["_slot_x"],
-                                  thermal=thermal)
+                                  thermal=thermal, slot_z=lay["_slot_z"])
         if spec.get("family") == "F3":
             # target: total pressure loss with bulk velocities (the static
             # dp of an expansion is a pressure rise and can be close to zero)

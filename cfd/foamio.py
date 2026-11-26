@@ -129,8 +129,14 @@ class Mesh:
         return read_boundary(self.dir / "boundary")
 
     @cached_property
+    def neighbour(self):
+        return read_labels(self.dir / "neighbour")
+
+    @cached_property
     def n_cells(self) -> int:
-        return int(self.owner.max()) + 1
+        # in 3D the last cell can be inner and own no face, so the
+        # neighbour list counts as well (2D cells always own a front face)
+        return int(max(self.owner.max(), self.neighbour.max())) + 1
 
     def patch_faces(self, name: str) -> range:
         b = self.boundary[name]
@@ -156,7 +162,7 @@ class Mesh:
 
         Good enough for locating cells and for profiles; not for gradients.
         """
-        nei = read_labels(self.dir / "neighbour")
+        nei = self.neighbour
         fc = self.face_centres(range(len(self.faces)))
         acc = np.zeros((self.n_cells, 3))
         cnt = np.zeros(self.n_cells)

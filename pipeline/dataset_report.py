@@ -27,7 +27,8 @@ BASE_PATTERNS = {"ap2": r"^f1_ap2_b\d{3}$", "f1": r"^f1_b\d{3}$",
                  "f1x": r"^f1x_b\d{3}$", "f2x": r"^f2x_b\d{3}$",
                  "f1_alle": r"^f1x?_b\d{3}$", "f2_alle": r"^f2x?_b\d{3}$",
                  "f4_trial": r"^f4_trial_b\d{3}$", "f4": r"^f4_b\d{3}$",
-                 "f3_trial": r"^f3_trial_b\d{3}$", "f3": r"^f3_b\d{3}$"}
+                 "f3_trial": r"^f3_trial_b\d{3}$", "f3": r"^f3_b\d{3}$",
+                 "f5_trial": r"^f5_trial_b\d{3}$", "f5": r"^f5_b\d{3}$"}
 
 
 def report(raw: Path, design: str, out_parquet: Path) -> str:
